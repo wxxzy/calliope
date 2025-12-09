@@ -3,11 +3,10 @@
 这个模块现在完全由 config.yaml 文件驱动。
 """
 import os
-import yaml
-from functools import lru_cache
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
+from config_manager import load_config
 
 # 默认的API密钥环境变量名称
 DEFAULT_API_KEY_ENV_VARS = {
@@ -17,21 +16,7 @@ DEFAULT_API_KEY_ENV_VARS = {
     "google": "GOOGLE_API_KEY",
 }
 
-@lru_cache(maxsize=None)
-def load_config():
-    """
-    加载并解析 config.yaml 文件。
-    使用 @lru_cache 确保文件只被读取和解析一次。
-    """
-    try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-        print("config.yaml 已成功加载和解析。")
-        return config
-    except FileNotFoundError:
-        raise FileNotFoundError("错误: config.yaml 文件未找到。请确保它在项目根目录下。")
-    except yaml.YAMLError as e:
-        raise ValueError(f"错误: 解析 config.yaml 文件失败: {e}")
+
 
 def get_llm(alias: str, temperature: float = 0.7):
     """

@@ -1,5 +1,6 @@
 import streamlit as st
 from config import load_environment
+import config_manager
 
 # 在应用的最开始加载环境变量
 load_environment()
@@ -18,19 +19,60 @@ st.set_page_config(
 
 # --- 侧边栏 ---
 with st.sidebar:
-    st.title("关于项目")
+    st.title("📝 AI写作智能体")
+    
+    with st.expander("🤖 系统模型配置", expanded=True):
+        # 加载当前配置
+        try:
+            config_data = st.session_state.get('config_data', config_manager.load_config())
+            st.session_state['config_data'] = config_data
+        except (FileNotFoundError, ValueError) as e:
+            st.error(f"加载配置文件失败: {e}")
+            st.stop()
+
+        models_config = config_data.get("models", {})
+        steps_config = config_data.get("steps", {})
+        
+        available_model_ids = list(models_config.keys())
+        
+        # 为每一步创建一个下拉菜单
+        new_steps_config = {}
+        for step, current_model_id in steps_config.items():
+            try:
+                # 获取当前模型在列表中的索引
+                current_index = available_model_ids.index(current_model_id)
+            except ValueError:
+                # 如果当前配置的模型ID不在模型列表中，则默认为第一个
+                current_index = 0
+            
+            # 使用st.selectbox让用户选择
+            selected_model = st.selectbox(
+                label=f"第 {list(steps_config.keys()).index(step) + 1} 步: {step.capitalize()}",
+                options=available_model_ids,
+                index=current_index,
+                key=f"step_{step}" # 为每个selectbox提供唯一的key
+            )
+            new_steps_config[step] = selected_model
+
+        if st.button("保存配置", type="primary"):
+            # 更新配置数据
+            st.session_state['config_data']['steps'] = new_steps_config
+            
+            # 保存到文件
+            try:
+                config_manager.save_config(st.session_state['config_data'])
+                st.success("配置已成功保存！")
+                st.balloons()
+            except IOError as e:
+                st.error(f"保存配置失败: {e}")
+
     st.info(
         """
         这是一个AI分步写作智能体的原型实现。
-        **工作流:**
-        1. **规划:** 生成写作计划。
-        2. **研究:** (待实现) 搜集资料。
-        3. **大纲:** (待实现) 构建文章结构。
-        4. **撰写:** (待实现) 生成初稿。
-        5. **修订:** (待实现) 优化稿件。
+        您可以在上面的配置区域动态更改每一步使用的AI模型。
         """
     )
-    st.warning("这是一个原型项目，请确保您的API密钥已在环境变量中正确设置。")
+
 
 # --- 主界面 ---
 st.title("🤖 AI 分步写作智能体")
@@ -56,7 +98,7 @@ with st.container(border=True):
         if not user_prompt:
             st.error("请输入您的写作需求！")
         else:
-            with st.spinner("正在调用“规划师”模型 (GPT-4o/Sonnet)... 请稍候..."):
+            with st.spinner(f"正在调用“规划师”模型 ({st.session_state.config_data['steps']['planner']})... 请稍候..."):
                 try:
                     # 创建并调用规划链
                     planner_chain = create_planner_chain()
@@ -106,7 +148,7 @@ if st.session_state.research_results:
     with st.container(border=True):
         st.header("第三步：大纲 (Outlining)")
         if st.button("生成大纲", type="primary"):
-            with st.spinner("正在调用“大纲师”模型 (GPT-4o/Sonnet) 生成大纲..."):
+            with st.spinner(f"正在调用“大纲师”模型 ({st.session_state.config_data['steps']['outliner']}) 生成大纲..."):
                 try:
                     # 准备大纲链的输入
                     outliner_input = {
@@ -165,7 +207,7 @@ if st.session_state.outline:
                 st.info(section_to_write)
 
                 if st.button(f"撰写章节 {current_index + 1}/{total_sections}", type="primary"):
-                    with st.spinner(f"正在调用“写手”模型撰写章节 {current_index + 1}..."):
+                    with st.spinner(f"正在调用“写手”模型 ({st.session_state.config_data['steps']['drafter']}) 撰写章节 {current_index + 1}..."):
                         try:
                             drafter_input = {
                                 "plan": st.session_state.plan,
@@ -202,7 +244,7 @@ if st.session_state.get("drafting_index", 0) > 0 and st.session_state.drafting_i
         st.info("这是最后一步。强大的“总编辑”模型将审阅全文，修正逻辑、润色语言，并输出最终稿件。")
         
         if st.button("开始修订全文", type="primary"):
-            with st.spinner("“总编辑”正在审阅全文... 这可能需要较长时间，请耐心等待..."):
+            with st.spinner(f"“总编辑” ({st.session_state.config_data['steps']['reviser']}) 正在审阅全文... 这可能需要较长时间，请耐心等待..."):
                 try:
                     # 准备修订链的输入
                     full_draft = "\n\n".join(st.session_state.drafts)

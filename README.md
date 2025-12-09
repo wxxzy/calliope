@@ -4,7 +4,7 @@
 
 ## ✨ 特性
 
-*   **分步工作流:** 将写作过程模块化，清晰展示每个阶段的进度和输出。
+*   **完全可配置:** 通过 `config.yaml` 文件，可以轻松添加新的大模型，并为工作流的每一步自由分配模型，无需修改代码。
 *   **多模型智能路由:** 根据不同任务的认知复杂度，动态选择最适合的LLM（如GPT-4o用于规划/修订，GPT-3.5-Turbo用于撰写初稿），平衡性能与成本。
 *   **在线研究集成:** 能够根据写作计划自动生成搜索查询，并利用Tavily AI或Google Custom Search API进行在线信息检索和摘要。
 *   **迭代式撰写:** 逐节生成内容，用户可以查看每部分草稿并控制生成进度，为长篇写作提供更好的上下文管理。
@@ -15,9 +15,10 @@
 ## 🚀 技术栈
 
 *   **核心语言:** Python 3.9+
+*   **配置文件:** YAML (`config.yaml`)
 *   **LLM 编排:** LangChain
 *   **Web 界面:** Streamlit
-*   **大模型:** OpenAI (GPT系列), Anthropic (Claude系列), Google (Gemini系列) - 动态选择
+*   **大模型:** OpenAI, Anthropic, Google, 及任何兼容OpenAI API的自定义模型
 *   **外部工具:** Tavily AI API / Google Custom Search API (用于Web搜索)
 *   **本地存储:** `st.session_state` (会话状态管理)
 
@@ -49,23 +50,53 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. 设置API密钥
+### 4. 系统配置 (核心步骤)
 
-本项目通过 `.env` 文件管理API密钥。
+项目的核心行为由 `config.yaml` 和 `.env` 两个文件控制。
+
+#### 4.1. 配置模型 (`config.yaml`)
+
+这个文件是您定义和分配AI模型的地方。
+
+*   **`models` 部分:** 在这里注册所有您想使用的模型。
+    *   `provider`: 支持 `openai`, `anthropic`, `google`, `openai_compatible`。
+    *   `model_name`: 模型的API名称。
+    *   `api_key_env`: (可选) 模型API密钥对应的环境变量名称。
+    *   `base_url_env`: (仅 `openai_compatible` 需要) 模型URL对应的环境变量名称。
+
+*   **`steps` 部分:** 在这里将工作流的每一步（如 `planner`, `drafter`）分配给上面定义的一个模型ID。
+
+**示例: 如何添加一个新的兼容模型并使用它?**
+1.  在 `models` 部分添加您的模型定义:
+    ```yaml
+    my_new_model:
+      provider: "openai_compatible"
+      model_name: "some-model-name-v1"
+      api_key_env: "MY_NEW_MODEL_API_KEY"
+      base_url_env: "MY_NEW_MODEL_BASE_URL"
+    ```
+2.  在 `steps` 部分将 `drafter` (写手) 指向它:
+    ```yaml
+    steps:
+      # ... 其他步骤
+      drafter: "my_new_model"
+    ```
+3.  确保在下一步的 `.env` 文件中定义了 `MY_NEW_MODEL_API_KEY` 和 `MY_NEW_MODEL_BASE_URL`。
+
+#### 4.2. 设置环境变量 (`.env`)
 
 1.  **创建 `.env` 文件:**
     在项目根目录下，将 `.env.example` 文件复制一份，并重命名为 `.env`。
 
 2.  **编辑 `.env` 文件:**
-    打开新建的 `.env` 文件，将其中列出的每个服务的API密钥替换为您自己的密钥。例如：
+    打开 `.env` 文件，为您在 `config.yaml` 中配置的模型所需要的环境变量填入实际值。
     ```
-    OPENAI_API_KEY="sk-your-real-openai-key"
-    TAVILY_API_KEY="tvly-your-real-tavily-key"
+    # 示例:
+    OPENAI_API_KEY="sk-..."
+    ANTHROPIC_API_KEY="sk-ant-..."
+    DOUBAO_CUSTOM_API_KEY="your-doubao-key"
     DOUBAO_CUSTOM_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
-    DOUBAO_CUSTOM_API_KEY="your-doubao-api-key"
-    ...
     ```
-    **注意:** `.env` 文件包含敏感信息，已在 `.gitignore` 中被忽略，请勿将其提交到版本控制系统。
 
 ### 5. 启动应用
 

@@ -20,6 +20,20 @@ def load_config():
     except yaml.YAMLError as e:
         raise ValueError(f"错误: 解析 {CONFIG_PATH} 文件失败: {e}")
 
+def load_provider_templates():
+    """
+    加载并解析 provider_templates.yaml 文件。
+    """
+    templates_path = "provider_templates.yaml"
+    try:
+        with open(templates_path, "r", encoding="utf-8") as f:
+            templates = yaml.safe_load(f)
+        return templates
+    except FileNotFoundError:
+        return {}
+    except yaml.YAMLError as e:
+        raise ValueError(f"错误: 解析 {templates_path} 文件失败: {e}")
+
 def save_config(config_data: dict):
     """
     将配置字典写回到 config.yaml 文件。

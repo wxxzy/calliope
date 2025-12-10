@@ -1,0 +1,55 @@
+# ===================================================================
+# 工具模板 (Tool Templates)
+# ===================================================================
+# 此文件由开发者维护，定义了系统支持的工具的技术细节。
+# 用户不需要关心此文件的内容。
+#
+# 字段说明:
+#   class: 工具的LangChain类完整导入路径。
+#   function: (与class互斥) 如果是自定义的本地函数，则提供函数导入路径。
+#   params:
+#     一个字典，定义了初始化该类实例或函数所需的参数。
+#     键(key): 将在UI上展示给用户的参数名。
+#     值(value): 参数的类型或默认值。
+#               - "string": 普通文本输入。
+#               - "int": 整数输入。
+#               - "bool": 布尔值。
+#               - "secret_env": 对应.env文件中的一个环境变量，用于存放API Key等敏感信息。
+#               - "url_env": 对应.env文件中的一个环境变量，用于存放Base URL。
+#               - 其他字面量: 作为默认值。
+
+# 官方 LangChain Tavily Search 工具 (通过 langchain-tavily 包提供)
+tavily_search:
+  class: "langchain_tavily.TavilySearch"
+  params:
+    tavily_api_key_env: "secret_env" # TavilySearch 类构造函数接受 tavily_api_key 参数
+    max_results: "int"
+
+# 官方 LangChain DuckDuckGo Search 工具 (通过 langchain-community 包提供)
+ddg_search:
+  class: "langchain_community.tools.ddg_search.DuckDuckGoSearchRun"
+  params:
+    max_results: "int" # DuckDuckGoSearchRun 接受 max_results 参数
+
+# 官方 LangChain Brave Search 工具 (通过 langchain-community 包提供)
+brave_search:
+  class: "langchain_community.tools.brave_search.BraveSearch"
+  params:
+    brave_api_key_env: "secret_env" # BraveSearch 类构造函数接受 brave_api_key 参数
+    k: "int" # 返回结果数量
+
+# 官方 LangChain Exa Search 工具 (通过 langchain-exa 包提供)
+exa_search:
+  class: "langchain_exa.ExaSearchResults"
+  params:
+    exa_api_key_env: "secret_env" # ExaSearchResults 类构造函数接受 exa_api_key 参数
+    num_results: "int" # 返回结果数量
+    # text_contents_options: "dict" # 可选参数，如果需要精细控制，可在UI中添加
+    # highlights: "bool"
+    # summary: "bool"
+
+# 我们自己实现的自定义搜索函数 (tools.py中定义)
+custom_web_search_function:
+  function: "tools.custom_web_search"
+  params:
+    engine: "string" # e.g., 'tavily' or 'google'

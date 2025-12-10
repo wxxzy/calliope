@@ -6,7 +6,8 @@
 
 *   **完全可配置:** 通过 `config.yaml` 文件，可以轻松添加新的大模型，并为工作流的每一步自由分配模型，无需修改代码。
 *   **多模型智能路由:** 根据不同任务的认知复杂度，动态选择最适合的LLM（如GPT-4o用于规划/修订，GPT-3.5-Turbo用于撰写初稿），平衡性能与成本。
-*   **在线研究集成:** 能够根据写作计划自动生成搜索查询，并利用Tavily AI或Google Custom Search API进行在线信息检索和摘要。
+*   **工具集成与管理:** 支持LangChain内置的多种工具（如Tavily Search, DuckDuckGo Search, Brave Search, Exa Search），并允许用户在UI上动态添加、配置和管理。
+*   **在线研究集成:** 能够根据写作计划自动生成搜索查询，并利用可配置的搜索工具进行在线信息检索和摘要。
 *   **迭代式撰写:** 逐节生成内容，用户可以查看每部分草稿并控制生成进度，为长篇写作提供更好的上下文管理。
 *   **智能修订:** 使用最强大的LLM作为“总编辑”，对全文进行全面审阅和润色，确保内容的逻辑性、流畅性和风格一致性。
 *   **交互式UI:** 基于Streamlit构建的直观Web界面，方便用户操作和查看各项成果。
@@ -15,11 +16,11 @@
 ## 🚀 技术栈
 
 *   **核心语言:** Python 3.9+
-*   **配置文件:** YAML (`config.yaml`)
+*   **配置文件:** YAML (`config.yaml`, `user_tools.yaml`, `provider_templates.yaml`, `tool_templates.yaml`)
 *   **LLM 编排:** LangChain
 *   **Web 界面:** Streamlit
-*   **大模型:** OpenAI, Anthropic, Google, 及任何兼容OpenAI API的自定义模型
-*   **外部工具:** Tavily AI API / Google Custom Search API (用于Web搜索)
+*   **大模型:** OpenAI, Anthropic, Google, Ollama, Groq, Fireworks, MistralAI (通过动态配置支持更多兼容模型)
+*   **外部工具:** Tavily Search, DuckDuckGo Search, Brave Search, Exa Search (通过动态配置支持更多)
 *   **本地存储:** `st.session_state` (会话状态管理)
 
 ## 🛠️ 安装与运行
@@ -52,43 +53,56 @@ pip install -r requirements.txt
 
 ### 4. 系统配置 (核心步骤)
 
-项目的核心行为由 `config.yaml` 和 `.env` 两个文件控制。
+项目的核心行为由 `config.yaml` (模型配置), `user_tools.yaml` (工具配置) 和 `.env` (环境变量) 文件控制。
 
 #### 4.1. 配置模型 (`config.yaml`)
 
 这个文件是您定义和分配AI模型的地方。
 
-*   **`models` 部分:** 在这里注册所有您想使用的模型。
-    *   `provider`: 支持 `openai`, `anthropic`, `google`, `openai_compatible`, 以及新增的 `ollama`。
-    *   `model_name`: 模型的API名称 (对于Ollama，请确保名称与您本地下载的完全一致，如 `llama3:8b`)。
+*   **`models` 部分:** 在这里注册所有您想使用的模型实例。
+    *   `template`: 模型使用的提供商模板ID (定义在 `provider_templates.yaml` 中)。
+    *   `model_name` 或 `model`: 模型的API名称。
     *   `api_key_env`: (可选) 模型API密钥对应的环境变量名称。
-    *   `base_url_env`: (`openai_compatible` 和 `ollama` 需要) 模型URL对应的环境变量名称。
+    *   `base_url_env`: (可选) 模型URL对应的环境变量名称。
 
-*   **`steps` 部分:** 在这里将工作流的每一步（如 `planner`, `drafter`）分配给上面定义的一个模型ID。
+*   **`steps` 部分:** 在这里将项目工作流的每一步（如 `planner`, `drafter`）映射到上面定义的模型实例ID。
 
-**示例: 如何使用本地Ollama模型?**
-1.  **安装Ollama:** 访问 [ollama.com](https://ollama.com/) 并根据指引在您的电脑上安装Ollama。
-2.  **下载模型:** 打开终端，运行 `ollama pull llama3:8b` (或其他您想使用的模型)。
-3.  **配置 `config.yaml`:**
-    *   在 `models` 部分确保有Ollama模型定义 (项目中已默认包含 `llama3_8b`)。
-    *   在 `steps` 部分将您想使用Ollama的步骤指向它，例如 `drafter: "llama3_8b"`。
-4.  **配置 `.env`:**
-    *   在 `.env` 文件中，确保 `OLLAMA_BASE_URL` 指向您的Ollama服务地址 (默认为 `http://localhost:11434`)。
+#### 4.2. 配置工具 (`user_tools.yaml`)
 
-#### 4.2. 设置环境变量 (`.env`)
+这个文件是您定义和管理工具实例的地方。
+
+*   **`my_tool_id`:** 您为工具实例定义的唯一ID。
+    *   `template`: 工具使用的模板ID (定义在 `tool_templates.yaml` 中)。
+    *   `description`: (可选) 工具的描述，用于UI显示或Agent理解。
+    *   `api_key_env`, `max_results` 等: 根据工具模板定义的参数进行填写。
+
+#### 4.3. 设置环境变量 (`.env`)
 
 1.  **创建 `.env` 文件:**
     在项目根目录下，将 `.env.example` 文件复制一份，并重命名为 `.env`。
 
 2.  **编辑 `.env` 文件:**
-    打开 `.env` 文件，为您在 `config.yaml` 中配置的模型所需要的环境变量填入实际值。
+    打开 `.env` 文件，为您在 `config.yaml` 或 `user_tools.yaml` 中配置的模型/工具所需要的所有环境变量填入实际值。
+
     ```
     # 示例:
     OPENAI_API_KEY="sk-..."
     ANTHROPIC_API_KEY="sk-ant-..."
+    GOOGLE_API_KEY="AIzaSy..."
+    TAVILY_API_KEY="tvly-..."
+    BRAVE_API_KEY="your-brave-api-key" # Brave Search API Key
+    EXA_API_KEY="your-exa-api-key" # Exa Search API Key
     
-    # Ollama服务地址
-    OLLAMA_BASE_URL="http://localhost:11434"
+    # 火山方舟豆包模型 (OpenAI 兼容)
+    DOUBAO_CUSTOM_API_KEY="your-doubao-api-key"
+    DOUBAO_CUSTOM_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
+
+    # Ollama 本地模型 (可选)
+    OLLAMA_BASE_URL="http://localhost:11434" # 默认地址
+    
+    # Google Custom Search API (可选)
+    GOOGLE_SEARCH_API_KEY="your-google-search-api-key"
+    GOOGLE_SEARCH_CX="your-custom-search-engine-id"
     ```
 
 ### 5. 启动应用
@@ -102,11 +116,15 @@ streamlit run app.py
 ## ✍️ 使用指南
 
 1.  **打开应用:** 运行 `streamlit run app.py` 启动Web界面。
-2.  **配置模型 (可选):** 在左侧边栏的“系统模型配置”区域，您可以为工作流的每一步（规划、研究、撰写等）从下拉菜单中选择不同的AI模型。点击“保存配置”即可生效。
-3.  **输入写作需求:** 在主界面文本框中输入您想创作的内容。
-4.  **分步执行:** 依次点击“生成计划”、“开始研究”、“生成大纲”等按钮，一步步完成您的创作。
-5.  **迭代撰写:** 在“撰写”阶段，通过“准备撰写”按钮解析大纲，然后使用“撰写下一章节”按钮逐一生成内容。
-6.  **完成与下载:** 全部章节撰写完毕后，点击“开始修订全文”进行最终润色，然后通过“下载最终稿件”按钮保存您的作品。
+2.  **配置系统 (可选):** 在左侧边栏的“系统配置”区域，您可以进行配置：
+    *   **步骤模型分配:** 为每个写作步骤（规划、研究、撰写等）从下拉菜单中选择一个已定义的模型。
+    *   **模型实例管理:** 查看、添加、配置和管理您自己的模型实例。
+    *   **工具实例管理:** 查看、添加、配置和管理您自己的工具实例。
+3.  **保存配置:** 完成任何配置更改后，请务必点击相应的“保存”按钮。
+4.  **分步执行:** 在主界面输入您的写作需求。然后，依次点击各步骤按钮，开始您的AI辅助创作之旅。
+    *   **在“研究”步骤中**，您需要从下拉菜单中选择本次搜索要使用的**工具实例**。
+    *   在“撰写”阶段，通过“准备撰写”按钮解析大纲，然后使用“撰写下一章节”按钮逐一生成内容。
+5.  **完成与下载:** 全部章节撰写完毕后，点击“开始修订全文”进行最终润色，然后通过“下载最终稿件”按钮保存您的作品。
 
 ## 💡 未来可能的增强功能
 

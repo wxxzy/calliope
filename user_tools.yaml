@@ -1,0 +1,47 @@
+# ===================================================================
+# 用户工具实例定义 (User Tool Instances)
+# ===================================================================
+# 在这里定义您想要在UI中使用的具体工具实例。
+#
+# 字段说明:
+#   template: 使用的工具模板ID，必须在 tool_templates.yaml 中有定义。
+#   description: 工具的描述，用于UI显示或Agent理解。
+#   ...其他参数: 根据 tool_templates.yaml 中为该模板定义的参数进行填写，以覆盖模板默认值。
+#
+# 预置开箱即用的工具实例
+
+# Tavily 搜索工具实例 (推荐)
+# 需要在 .env 文件中设置 TAVILY_API_KEY
+tavily_default:
+  template: "tavily_search"
+  description: "Tavily搜索引擎，一个为LLM优化的搜索引擎，结果质量高。"
+  tavily_api_key_env: "TAVILY_API_KEY"
+  max_results: 5
+
+# DuckDuckGo 搜索工具实例 (无需API Key)
+ddg_default:
+  template: "ddg_search"
+  description: "DuckDuckGo搜索引擎，无需API密钥，方便快捷。"
+  max_results: 5
+
+# Brave Search 工具实例 (需要API Key)
+# 需要在 .env 文件中设置 BRAVE_API_KEY
+brave_default:
+  template: "brave_search"
+  description: "Brave Search搜索引擎，注重隐私，提供高质量搜索结果。"
+  brave_api_key_env: "BRAVE_API_KEY" # 对应 .env 中的 BRAVE_API_KEY
+  k: 5 # 返回结果数量
+
+# Exa Search 工具实例 (需要API Key)
+# 需要在 .env 文件中设置 EXA_API_KEY
+exa_default:
+  template: "exa_search"
+  description: "Exa Search，新一代的搜索引擎，专注于高质量和深度内容。"
+  exa_api_key_env: "EXA_API_KEY" # 对应 .env 中的 EXA_API_KEY
+  num_results: 5
+
+# 我们自己的自定义搜索函数实例 (备用)
+my_custom_web_search:
+  template: "custom_web_search_function"
+  description: "使用自定义函数进行Web搜索，可在Tavily和Google之间切换。"
+  engine: "tavily" # 默认使用tavily引擎

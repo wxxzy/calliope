@@ -6,7 +6,6 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from llm_provider import get_llm
 from prompts import PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT
-from tools import web_search
 
 def create_planner_chain():
     """
@@ -24,37 +23,36 @@ def create_planner_chain():
     
     return planner_chain
 
-def create_research_chain(search_engine: str = "tavily"):
+def create_research_chain(search_tool):
     """
     创建并返回“研究”步骤的链。
+    这个链现在接收一个工具对象，使其具有通用性。
 
     这个链的步骤：
     1. 根据plan和user_prompt生成搜索查询词。
-    2. 使用web_search工具执行搜索。
+    2. 使用传入的search_tool为每个查询词执行搜索。
     3. 将搜索结果和user_prompt交给summarizer模型进行总结。
     
     Args:
-        search_engine (str): 要使用的搜索引擎 ('tavily' 或 'google').
+        search_tool: 一个符合LangChain BaseTool规范的工具实例。
 
     Returns:
         A LangChain runnable instance.
     """
     
-    # 定义链的各个部分
     generate_queries_chain = (
         RESEARCH_QUERY_PROMPT
         | get_llm("researcher")
         | StrOutputParser()
-        | (lambda text: text.strip().split("\n")) # 将输出的字符串解析为查询列表
+        | (lambda text: [line for line in text.strip().split("\n") if line.strip()]) # 解析为查询列表，并过滤空行
     )
     
-    # 这是一个自定义函数，用于接收查询列表并为每个查询执行搜索
     def run_search_and_aggregate(queries: list) -> str:
         all_results = []
         for query in queries:
-            if query.strip(): # 确保查询不为空
-                search_result = web_search(query, engine=search_engine)
-                all_results.append(search_result)
+            print(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}'")
+            tool_result = search_tool.invoke(query)
+            all_results.append(str(tool_result)) # 确保结果是字符串
         return "\n\n---\n\n".join(all_results)
 
     summarize_chain = (
@@ -63,19 +61,14 @@ def create_research_chain(search_engine: str = "tavily"):
         | StrOutputParser()
     )
 
-    # 使用LCEL的RunnablePassthrough和assign来编排整个流程
-    # RunnablePassthrough.assign(...) 允许我们在链中传递和创建新的变量
     research_chain = (
         RunnablePassthrough.assign(
-            # "queries" 键将由 generate_queries_chain 的结果填充
             queries=generate_queries_chain
         )
         | RunnablePassthrough.assign(
-            # "search_results" 键将由 run_search_and_aggregate 函数的结果填充
-            # 它接收前一步的整个输出（包括 'plan', 'user_prompt', 和新生成的 'queries'）
             search_results=lambda x: run_search_and_aggregate(x["queries"])
         )
-        | summarize_chain # 最后，将包含 search_results 的字典传递给总结链
+        | summarize_chain
     )
     
     return research_chain
@@ -132,12 +125,19 @@ if __name__ == '__main__':
         plan_result = planner_chain.invoke({"user_prompt": test_user_prompt})
         print(plan_result)
 
-        # --- 2. 研究 ---
+        # --- 2. 测试研究链 ---
         print("\n" + "="*20 + "\n2. 调用研究链...\n" + "="*20)
-        research_chain = create_research_chain(search_engine="tavily") 
+        
+        # 首先，获取一个工具实例
+        from tool_provider import get_tool
+        search_tool = get_tool("tavily_default") # 使用默认的tavily工具
+        
+        # 然后，将工具实例传递给研究链
+        research_chain = create_research_chain(search_tool=search_tool) 
         research_input = {"plan": plan_result, "user_prompt": test_user_prompt}
         research_result = research_chain.invoke(research_input)
         print(research_result)
+        print("="*20)
 
         # --- 3. 大纲 ---
         print("\n" + "="*20 + "\n3. 调用大纲链...\n" + "="*20)

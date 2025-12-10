@@ -4,32 +4,32 @@
 import os
 import requests
 from tavily import TavilyClient
+from langchain.tools import tool
+
 
 # --- 从环境变量或config中加载API密钥 ---
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
 GOOGLE_SEARCH_CX = os.getenv("GOOGLE_SEARCH_CX")
 
-def web_search(query: str, engine: str = "tavily"):
-    """
-    执行Web搜索并返回清理过的结果。
+from langchain.tools import tool
 
-    Args:
-        query (str): 搜索查询词。
-        engine (str): 要使用的搜索引擎，支持 'tavily' 或 'google'。
-
-    Returns:
-        str: 连接了多个搜索结果片段的字符串。
+@tool
+def custom_web_search(query: str, engine: str = "tavily") -> str:
     """
-    print(f"正在使用引擎 '{engine}' 搜索: '{query}'...")
+    一个自定义的Web搜索工具，可以调用Tavily或Google搜索引擎。
+    当需要进行网络搜索以获取信息时使用。
+    :param query: str, 搜索的关键词或问题。
+    :param engine: str, 要使用的搜索引擎，支持 'tavily' 或 'google'。
+    :return: str, 搜索结果的摘要字符串。
+    """
+    print(f"正在使用自定义搜索函数 '{engine}' 引擎搜索: '{query}'...")
     try:
         if engine == "tavily":
             if not TAVILY_API_KEY:
                 raise ValueError("请设置 TAVILY_API_KEY 环境变量以使用Tavily搜索。")
             client = TavilyClient(api_key=TAVILY_API_KEY)
-            # Tavily SDK为AI Agent优化，直接返回简洁的内容列表
             results = client.search(query, search_depth="basic", max_results=5)
-            # 将结果整理成一个易于LLM处理的字符串
             return "\n\n".join([f"来源 {i+1}: {res['content']}" for i, res in enumerate(results["results"])])
 
         elif engine == "google":
@@ -39,13 +39,12 @@ def web_search(query: str, engine: str = "tavily"):
             url = "https://www.googleapis.com/customsearch/v1"
             params = {"key": GOOGLE_SEARCH_API_KEY, "cx": GOOGLE_SEARCH_CX, "q": query, "num": 5}
             response = requests.get(url, params=params)
-            response.raise_for_status() # 如果请求失败则抛出异常
+            response.raise_for_status()
             
             search_results = response.json().get('items', [])
             if not search_results:
                 return "Google搜索没有返回结果。"
             
-            # 提取并格式化摘要信息
             return "\n\n".join([f"来源 {i+1}: {item['title']}\n摘要: {item.get('snippet', 'N/A')}" for i, item in enumerate(search_results)])
 
         else:
@@ -114,14 +113,8 @@ def check_ollama_model_availability(model_name: str, base_url: str) -> dict:
 
 # --- Test function ---
 if __name__ == '__main__':
-    test_query = "什么是引力波？"
+    test_query = "LangChain是什么？"
     
-    print("--- 测试Tavily搜索 ---")
-    tavily_result = web_search(test_query, engine="tavily")
+    print("--- 测试自定义搜索工具 (Tavily) ---")
+    tavily_result = custom_web_search.invoke(test_query) # 使用.invoke()，因为它现在是一个Tool
     print(tavily_result)
-    
-    print("\n" + "="*20 + "\n")
-
-    print("--- 测试Google搜索 ---")
-    google_result = web_search(test_query, engine="google")
-    print(google_result)

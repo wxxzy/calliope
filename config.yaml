@@ -13,16 +13,20 @@ models:
     model_name: claude-3-haiku-20240307
   gemini_1_5_flash:
     provider: google
-    model_name: gemini-1.5-flash-latest
+    model_name: gemini-2.5-flash
   doubao_seed:
     provider: openai_compatible
     model_name: doubao-seed-1-6-251015
     api_key_env: DOUBAO_CUSTOM_API_KEY
     base_url_env: DOUBAO_CUSTOM_BASE_URL
+  llama3_8b:
+    provider: ollama
+    model_name: qwen3:8b
+    base_url_env: OLLAMA_BASE_URL
 steps:
-  planner: doubao_seed
-  researcher: doubao_seed
-  summarizer: doubao_seed
+  planner: gemini_1_5_flash
+  researcher: llama3_8b
+  summarizer: llama3_8b
   outliner: doubao_seed
-  drafter: doubao_seed
+  drafter: llama3_8b
   reviser: doubao_seed

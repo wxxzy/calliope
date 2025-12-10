@@ -54,6 +54,64 @@ def web_search(query: str, engine: str = "tavily"):
     except Exception as e:
         return f"搜索过程中发生错误: {e}"
 
+def check_ollama_model_availability(model_name: str, base_url: str) -> dict:
+    """
+    检查Ollama服务是否正在运行，以及指定的模型是否可用。
+
+    Args:
+        model_name (str): 要检查的模型名称 (例如 "llama3:8b").
+        base_url (str): Ollama服务的根URL (例如 "http://localhost:11434").
+
+    Returns:
+        dict: 一个包含 'status' (bool) 和 'message' (str) 的字典。
+    """
+    print(f"正在检查Ollama模型 '{model_name}' at {base_url}...")
+    try:
+        # 1. 检查Ollama服务是否在运行
+        response = requests.get(base_url, timeout=5)
+        response.raise_for_status()
+
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        return {
+            "status": False,
+            "message": f"无法连接到Ollama服务。请确认Ollama正在运行，并且地址 '{base_url}' 是正确的。"
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "status": False,
+            "message": f"检查Ollama服务状态时发生网络错误: {e}"
+        }
+
+    try:
+        # 2. 获取已下载的模型列表
+        tags_response = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=10)
+        tags_response.raise_for_status()
+        
+        available_models = tags_response.json().get("models", [])
+        
+        # 3. 检查模型是否存在
+        for model_data in available_models:
+            if model_data.get("name", "").lower() == model_name.lower():
+                print(f"成功: 模型 '{model_name}' 可用。")
+                return {"status": True, "message": "模型可用"}
+
+        # 如果循环结束仍未找到
+        return {
+            "status": False,
+            "message": f"模型 '{model_name}' 在您的本地Ollama中未找到。\n请通过命令 `ollama pull {model_name}` 下载它。"
+        }
+
+    except requests.exceptions.RequestException as e:
+        return {
+            "status": False,
+            "message": f"获取Ollama模型列表时发生网络错误: {e}"
+        }
+    except Exception as e:
+        return {
+            "status": False,
+            "message": f"检查Ollama模型时发生未知错误: {e}"
+        }
+
 # --- Test function ---
 if __name__ == '__main__':
     test_query = "什么是引力波？"

@@ -59,29 +59,21 @@ pip install -r requirements.txt
 这个文件是您定义和分配AI模型的地方。
 
 *   **`models` 部分:** 在这里注册所有您想使用的模型。
-    *   `provider`: 支持 `openai`, `anthropic`, `google`, `openai_compatible`。
-    *   `model_name`: 模型的API名称。
+    *   `provider`: 支持 `openai`, `anthropic`, `google`, `openai_compatible`, 以及新增的 `ollama`。
+    *   `model_name`: 模型的API名称 (对于Ollama，请确保名称与您本地下载的完全一致，如 `llama3:8b`)。
     *   `api_key_env`: (可选) 模型API密钥对应的环境变量名称。
-    *   `base_url_env`: (仅 `openai_compatible` 需要) 模型URL对应的环境变量名称。
+    *   `base_url_env`: (`openai_compatible` 和 `ollama` 需要) 模型URL对应的环境变量名称。
 
 *   **`steps` 部分:** 在这里将工作流的每一步（如 `planner`, `drafter`）分配给上面定义的一个模型ID。
 
-**示例: 如何添加一个新的兼容模型并使用它?**
-1.  在 `models` 部分添加您的模型定义:
-    ```yaml
-    my_new_model:
-      provider: "openai_compatible"
-      model_name: "some-model-name-v1"
-      api_key_env: "MY_NEW_MODEL_API_KEY"
-      base_url_env: "MY_NEW_MODEL_BASE_URL"
-    ```
-2.  在 `steps` 部分将 `drafter` (写手) 指向它:
-    ```yaml
-    steps:
-      # ... 其他步骤
-      drafter: "my_new_model"
-    ```
-3.  确保在下一步的 `.env` 文件中定义了 `MY_NEW_MODEL_API_KEY` 和 `MY_NEW_MODEL_BASE_URL`。
+**示例: 如何使用本地Ollama模型?**
+1.  **安装Ollama:** 访问 [ollama.com](https://ollama.com/) 并根据指引在您的电脑上安装Ollama。
+2.  **下载模型:** 打开终端，运行 `ollama pull llama3:8b` (或其他您想使用的模型)。
+3.  **配置 `config.yaml`:**
+    *   在 `models` 部分确保有Ollama模型定义 (项目中已默认包含 `llama3_8b`)。
+    *   在 `steps` 部分将您想使用Ollama的步骤指向它，例如 `drafter: "llama3_8b"`。
+4.  **配置 `.env`:**
+    *   在 `.env` 文件中，确保 `OLLAMA_BASE_URL` 指向您的Ollama服务地址 (默认为 `http://localhost:11434`)。
 
 #### 4.2. 设置环境变量 (`.env`)
 
@@ -94,8 +86,9 @@ pip install -r requirements.txt
     # 示例:
     OPENAI_API_KEY="sk-..."
     ANTHROPIC_API_KEY="sk-ant-..."
-    DOUBAO_CUSTOM_API_KEY="your-doubao-key"
-    DOUBAO_CUSTOM_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
+    
+    # Ollama服务地址
+    OLLAMA_BASE_URL="http://localhost:11434"
     ```
 
 ### 5. 启动应用

@@ -86,6 +86,18 @@ def get_llm(alias: str, temperature: float = 0.7):
         if not api_key:
             raise ValueError(f"请设置环境变量 {api_key_env} 以使用 {model_id} 模型。")
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=temperature)
+    
+    elif provider == "ollama":
+        base_url_env = model_config.get("base_url_env")
+        if not base_url_env:
+            raise ValueError(f"模型 '{model_id}' 是 'ollama' 类型, 但未在 config.yaml 中指定 'base_url_env'。")
+        base_url = os.getenv(base_url_env)
+        if not base_url:
+            raise ValueError(f"请设置环境变量 {base_url_env} 以使用 {model_id} 模型。")
+        
+        # 导入ChatOllama
+        from langchain_community.chat_models import ChatOllama
+        return ChatOllama(model=model_name, base_url=base_url, temperature=temperature)
         
     else:
         raise NotImplementedError(f"未知的模型提供商 '{provider}'。支持的提供商: 'openai', 'openai_compatible', 'anthropic', 'google'。")

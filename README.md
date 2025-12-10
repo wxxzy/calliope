@@ -4,24 +4,18 @@
 
 ## ✨ 特性
 
-*   **完全可配置:** 通过 `config.yaml` 文件，可以轻松添加新的大模型，并为工作流的每一步自由分配模型，无需修改代码。
-*   **多模型智能路由:** 根据不同任务的认知复杂度，动态选择最适合的LLM（如GPT-4o用于规划/修订，GPT-3.5-Turbo用于撰写初稿），平衡性能与成本。
-*   **工具集成与管理:** 支持LangChain内置的多种工具（如Tavily Search, DuckDuckGo Search, Brave Search, Exa Search），并允许用户在UI上动态添加、配置和管理。
-*   **在线研究集成:** 能够根据写作计划自动生成搜索查询，并利用可配置的搜索工具进行在线信息检索和摘要。
-*   **迭代式撰写:** 逐节生成内容，用户可以查看每部分草稿并控制生成进度，为长篇写作提供更好的上下文管理。
-*   **智能修订:** 使用最强大的LLM作为“总编辑”，对全文进行全面审阅和润色，确保内容的逻辑性、流畅性和风格一致性。
-*   **交互式UI:** 基于Streamlit构建的直观Web界面，方便用户操作和查看各项成果。
-*   **成果导出:** 支持将最终稿件一键导出为Markdown格式。
+*   **记忆系统 / RAG:** 通过集成的ChromaDB向量数据库，为每个写作项目创建独立的“记忆库”。能够索引“世界观”和已完成的章节，并在后续的撰写和修订中智能检索相关上下文，极大地提升了长篇内容的一致性。
+*   **完全可配置:** 用户可以在UI上动态配置和管理模型、工具和文本切分器，系统会根据`config.yaml`, `user_tools.yaml`等配置文件动态加载。
+*   **多模型与多工具:** 支持并预置了多种主流LLM提供商（OpenAI, Google, Anthropic, Ollama等）和搜索工具（Tavily, Brave, DuckDuckGo等）的模板。
 
 ## 🚀 技术栈
 
 *   **核心语言:** Python 3.9+
-*   **配置文件:** YAML (`config.yaml`, `user_tools.yaml`, `provider_templates.yaml`, `tool_templates.yaml`)
+*   **配置文件:** YAML
 *   **LLM 编排:** LangChain
 *   **Web 界面:** Streamlit
-*   **大模型:** OpenAI, Anthropic, Google, Ollama, Groq, Fireworks, MistralAI (通过动态配置支持更多兼容模型)
-*   **外部工具:** Tavily Search, DuckDuckGo Search, Brave Search, Exa Search (通过动态配置支持更多)
-*   **本地存储:** `st.session_state` (会话状态管理)
+*   **向量数据库:** ChromaDB (用于RAG)
+*   **文本切分:** `langchain-text-splitters`, `sentence-transformers`
 
 ## 🛠️ 安装与运行
 
@@ -53,7 +47,7 @@ pip install -r requirements.txt
 
 ### 4. 系统配置 (核心步骤)
 
-项目的核心行为由 `config.yaml` (模型配置), `user_tools.yaml` (工具配置) 和 `.env` (环境变量) 文件控制。
+项目的核心行为由 `config.yaml` (模型配置), `user_tools.yaml` (工具配置), `user_text_splitters.yaml` (切分器配置) 和 `.env` (环境变量) 文件控制。
 
 #### 4.1. 配置模型 (`config.yaml`)
 
@@ -67,6 +61,13 @@ pip install -r requirements.txt
 
 *   **`steps` 部分:** 在这里将项目工作流的每一步（如 `planner`, `drafter`）映射到上面定义的模型实例ID。
 
+*   **`embeddings` 部分:** 在这里注册所有您想使用的Embedding模型实例。
+    *   `template`: Embedding模型使用的提供商模板ID (定义在 `provider_templates.yaml` 的 `embeddings` 部分)。
+    *   `model`: Embedding模型的API名称 (例如 `text-embedding-3-small` 或 `models/embedding-001`)。
+    *   `api_key_env`: (可选) Embedding模型API密钥对应的环境变量名称。
+    *   `base_url_env`: (可选) Embedding模型URL对应的环境变量名称。
+*   **`active_embedding_model`:** 指定当前激活的Embedding模型实例ID。
+
 #### 4.2. 配置工具 (`user_tools.yaml`)
 
 这个文件是您定义和管理工具实例的地方。
@@ -76,7 +77,16 @@ pip install -r requirements.txt
     *   `description`: (可选) 工具的描述，用于UI显示或Agent理解。
     *   `api_key_env`, `max_results` 等: 根据工具模板定义的参数进行填写。
 
-#### 4.3. 设置环境变量 (`.env`)
+#### 4.3. 配置文本切分器 (`user_text_splitters.yaml`)
+
+这个文件是您定义和管理文本切分器实例的地方。
+
+*   **`my_splitter_id`:** 您为切分器实例定义的唯一ID。
+    *   `template`: 切分器使用的模板ID (定义在 `text_splitter_templates.yaml` 中)。
+    *   `description`: (可选) 切分器的描述，用于UI显示。
+    *   `chunk_size`, `chunk_overlap` 等: 根据切分器模板定义的参数进行填写。
+
+#### 4.4. 设置环境变量 (`.env`)
 
 1.  **创建 `.env` 文件:**
     在项目根目录下，将 `.env.example` 文件复制一份，并重命名为 `.env`。
@@ -88,10 +98,10 @@ pip install -r requirements.txt
     # 示例:
     OPENAI_API_KEY="sk-..."
     ANTHROPIC_API_KEY="sk-ant-..."
-    GOOGLE_API_KEY="AIzaSy..."
+    GOOGLE_API_KEY="AIzaSy..." # Google LLM 和 Embedding 模型共用此密钥
     TAVILY_API_KEY="tvly-..."
-    BRAVE_API_KEY="your-brave-api-key" # Brave Search API Key
-    EXA_API_KEY="your-exa-api-key" # Exa Search API Key
+    BRAVE_API_KEY="your-brave-api-key" # Brave Search API Key (如果使用Brave Search)
+    EXA_API_KEY="your-exa-api-key" # Exa Search API Key (如果使用Exa Search)
     
     # 火山方舟豆包模型 (OpenAI 兼容)
     DOUBAO_CUSTOM_API_KEY="your-doubao-api-key"
@@ -116,15 +126,19 @@ streamlit run app.py
 ## ✍️ 使用指南
 
 1.  **打开应用:** 运行 `streamlit run app.py` 启动Web界面。
-2.  **配置系统 (可选):** 在左侧边栏的“系统配置”区域，您可以进行配置：
+2.  **创建项目:** 在左侧边栏输入一个新项目的名称，点击“创建新项目”。每个项目都有自己独立的记忆库。
+3.  **配置系统 (可选):** 在侧边栏的“系统配置”区域，您可以进行配置：
     *   **步骤模型分配:** 为每个写作步骤（规划、研究、撰写等）从下拉菜单中选择一个已定义的模型。
-    *   **模型实例管理:** 查看、添加、配置和管理您自己的模型实例。
-    *   **工具实例管理:** 查看、添加、配置和管理您自己的工具实例。
-3.  **保存配置:** 完成任何配置更改后，请务必点击相应的“保存”按钮。
-4.  **分步执行:** 在主界面输入您的写作需求。然后，依次点击各步骤按钮，开始您的AI辅助创作之旅。
-    *   **在“研究”步骤中**，您需要从下拉菜单中选择本次搜索要使用的**工具实例**。
-    *   在“撰写”阶段，通过“准备撰写”按钮解析大纲，然后使用“撰写下一章节”按钮逐一生成内容。
-5.  **完成与下载:** 全部章节撰写完毕后，点击“开始修订全文”进行最终润色，然后通过“下载最终稿件”按钮保存您的作品。
+    *   **模型/工具/切分器实例管理:** 查看、添加、配置和管理您自己的模型、工具和文本切分器实例。
+4.  **保存配置:** 完成任何配置更改后，请务必点击相应的“保存”按钮。
+5.  **分步执行:**
+    *   **更新核心记忆:** 在主界面的“核心记忆 (世界观)”文本框中，输入您作品的核心设定，然后点击“更新核心记忆”。
+    *   **规划:** 输入整体写作需求，生成计划。
+    *   **研究:** 选择一个搜索工具，进行在线研究。
+    *   **大纲:** 生成文章的结构大纲。
+    *   **撰写 (RAG增强):** 点击“准备撰写”解析大纲，然后逐一点击“撰写章节”。在这一步，AI会**自动检索**核心记忆和已写章节的内容，以保证上下文连贯。每完成一章，该章节也会被自动存入记忆库。
+    *   **修订 (RAG增强):** 初稿完成后，点击“开始修订全文”。AI“总编辑”会**自动检索**全文最相关的上下文，进行一次保证全局一致性的深度润色。
+6.  **完成与下载:** 最终稿件生成后，点击“下载最终稿件”按钮保存您的作品。
 
 ## 💡 未来可能的增强功能
 

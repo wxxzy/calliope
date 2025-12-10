@@ -1,0 +1,23 @@
+# ===================================================================
+# 文本切分器模板 (Text Splitter Templates)
+# ===================================================================
+# 此文件由开发者维护，定义了系统支持的文本切分器的技术细节。
+
+# LangChain 官方的递归字符切分器 (通用)
+recursive_character:
+  class: "langchain_text_splitters.RecursiveCharacterTextSplitter"
+  params:
+    chunk_size: "int"
+    chunk_overlap: "int"
+
+# LangChain 官方的Markdown切分器
+markdown:
+  class: "langchain_text_splitters.MarkdownHeaderTextSplitter"
+  params: {}
+
+# 我们自定义的中文优化切分器
+chinese_optimized:
+  class: "custom_splitters.ChineseOptimizedTextSplitter"
+  params:
+    chunk_size: "int"
+    chunk_overlap: "int"

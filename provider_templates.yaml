@@ -1,64 +1,25 @@
 # ===================================================================
-# 提供商模板 (Provider Templates)
+# 新增 embeddings 部分
 # ===================================================================
-# 此文件由开发者维护，定义了系统支持的模型提供商的技术细节。
-# 用户不需要关心此文件的内容。
-#
-# 字段说明:
-#   class: 模型的LangChain类完整导入路径。
-#   params:
-#     一个字典，定义了初始化该类实例所需的参数。
-#     键(key): 将在UI上展示给用户的参数名。
-#     值(value): 参数的类型，用于UI输入校验或组件选择。
-#               - "string": 普通文本输入。
-#               - "secret_env": 对应.env文件中的一个环境变量，用于存放API Key等敏感信息。
-#               - "url_env": 对应.env文件中的一个环境变量，用于存放Base URL。
+# 定义 Embedding 模型提供商的技术细节
+embeddings:
+  openai:
+    class: "langchain_openai.OpenAIEmbeddings"
+    params:
+      model: "string" # e.g., "text-embedding-3-small"
+      api_key_env: "secret_env"
+  
+  ollama:
+    class: "langchain_community.embeddings.OllamaEmbeddings"
+    params:
+      model: "string" # e.g., "mxbai-embed-large"
+      base_url_env: "url_env"
 
-openai:
-  class: "langchain_openai.ChatOpenAI"
-  params:
-    model_name: "string"
-    api_key_env: "secret_env"
+  google_genai:
+    class: "langchain_google_genai.GoogleGenerativeAIEmbeddings"
+    params:
+      model: "string" # e.g., "models/embedding-001"
+      api_key_env: "secret_env"
 
-openai_compatible:
-  class: "langchain_openai.ChatOpenAI"
-  params:
-    model_name: "string"
-    api_key_env: "secret_env"
-    base_url_env: "url_env"
 
-anthropic:
-  class: "langchain_anthropic.ChatAnthropic"
-  params:
-    model_name: "string"
-    api_key_env: "secret_env"
-
-google:
-  class: "langchain_google_genai.ChatGoogleGenerativeAI"
-  params:
-    model: "string" # 注意：Google的参数名是'model'
-    api_key_env: "secret_env"
-
-ollama:
-  class: "langchain_community.chat_models.ChatOllama"
-  params:
-    model: "string" # Ollama的参数名也是'model'
-    base_url_env: "url_env"
-
-groq:
-  class: "langchain_groq.ChatGroq"
-  params:
-    model_name: "string"
-    api_key_env: "secret_env"
-
-fireworks:
-  class: "langchain_fireworks.ChatFireworks"
-  params:
-    model: "string"
-    api_key_env: "secret_env"
-
-mistralai:
-  class: "langchain_mistralai.ChatMistralAI"
-  params:
-    model_name: "string"
-    api_key_env: "secret_env"
+  # 未来可以添加 HuggingFaceEmbeddings 等

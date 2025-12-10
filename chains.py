@@ -86,30 +86,65 @@ def create_outliner_chain():
     return outliner_chain
 
 
-def create_drafter_chain():
+def create_drafter_chain(collection_name: str):
     """
     创建并返回“撰写”步骤的链。
-    这个链接收 outline, research_results, user_prompt, 和 section_to_write，
-    生成指定章节的草稿。
+    增加了RAG步骤：在撰写前先从向量数据库检索上下文。
     """
+    
+    def retrieve_and_format_context(inputs: dict) -> str:
+        """从向量数据库检索上下文并格式化为字符串。"""
+        retrieved_docs = retrieve_context(
+            collection_name=collection_name,
+            query=inputs["section_to_write"], # 使用要写的章节作为查询
+            n_results=3 
+        )
+        return "\n\n---\n\n".join(retrieved_docs)
+
     drafter_llm = get_llm("drafter")
     
-    drafter_chain = DRAFTER_PROMPT | drafter_llm | StrOutputParser()
+    # RAG增强的撰写链
+    rag_drafter_chain = (
+        RunnablePassthrough.assign(
+            retrieved_context=retrieve_and_format_context
+        )
+        | DRAFTER_PROMPT
+        | drafter_llm
+        | StrOutputParser()
+    )
     
-    return drafter_chain
+    return rag_drafter_chain
 
 
 
-def create_reviser_chain():
+def create_reviser_chain(collection_name: str):
     """
     创建并返回“修订”步骤的链。
-    这个链接收 plan, outline, 和 full_draft，生成最终的修订稿。
+    增加了RAG步骤：在修订前先检索最相关的上下文。
     """
-    reviser_llm = get_llm("reviser", temperature=0.5) # 修订时降低一些创造性
+    def retrieve_and_format_context_for_reviser(inputs: dict) -> str:
+        """为修订者检索上下文。可以使用整个草稿或其摘要作为查询。"""
+        # 为了效率，可以只用草稿的一部分或一个总结作为查询
+        query = inputs["full_draft"][:2000] # 使用初稿的前2000个字符作为查询
+        retrieved_docs = retrieve_context(
+            collection_name=collection_name,
+            query=query,
+            n_results=5 
+        )
+        return "\n\n---\n\n".join(retrieved_docs)
+
+    reviser_llm = get_llm("reviser", temperature=0.5)
     
-    reviser_chain = REVISER_PROMPT | reviser_llm | StrOutputParser()
+    rag_reviser_chain = (
+        RunnablePassthrough.assign(
+            retrieved_context=retrieve_and_format_context_for_reviser
+        )
+        | REVISER_PROMPT
+        | reviser_llm
+        | StrOutputParser()
+    )
     
-    return reviser_chain
+    return rag_reviser_chain
 
 
 # --- Test function ---
@@ -150,8 +185,17 @@ if __name__ == '__main__':
         outline_result = outliner_chain.invoke(outliner_input)
         print(outline_result)
 
-        # --- 4. 撰写 (仅测试撰写引言部分) ---
-        print("\n" + "="*20 + "\n4. 调用撰写链 (测试引言部分)...\n" + "="*20)
+        # --- 模拟RAG流程：先索引一些内容 ---
+        from vector_store_manager import index_text, reset_collection
+        test_collection_name = "test_project"
+        print(f"\n--- 准备RAG测试 (重置集合: {test_collection_name}) ---")
+        reset_collection(test_collection_name)
+        print("--- 正在索引'世界观'和'大纲' ---")
+        index_text(test_collection_name, "世界观: 主角是一个AI侦探。", metadata={"source": "world_bible"})
+        index_text(test_collection_name, outline_result, metadata={"source": "outline"})
+        
+        # --- 4. 撰写 (RAG增强) ---
+        print("\n" + "="*20 + "\n4. 调用RAG撰写链 (测试引言部分)...\n" + "="*20)
         
         try:
             introduction_section_for_writing = outline_result.split("第一部分")[0]
@@ -160,9 +204,8 @@ if __name__ == '__main__':
 
         print(f"--- 将为以下章节撰写内容 ---\n{introduction_section_for_writing}\n--------------------------")
 
-        drafter_chain = create_drafter_chain()
+        drafter_chain = create_drafter_chain(collection_name=test_collection_name)
         drafter_input = {
-            "plan": plan_result,
             "user_prompt": test_user_prompt,
             "research_results": research_result,
             "outline": outline_result,
@@ -173,13 +216,13 @@ if __name__ == '__main__':
         print(draft_result)
         print("="*20)
 
-        # --- 5. 修订 (测试修订引言部分) ---
-        print("\n" + "="*20 + "\n5. 调用修订链...\n" + "="*20)
-        reviser_chain = create_reviser_chain()
+        # --- 5. 修订 (RAG增强) ---
+        print("\n" + "="*20 + "\n5. 调用RAG修订链...\n" + "="*20)
+        reviser_chain = create_reviser_chain(collection_name=test_collection_name)
         reviser_input = {
             "plan": plan_result,
             "outline": outline_result,
-            "full_draft": draft_result # 在真实场景中，这里是完整的初稿
+            "full_draft": draft_result 
         }
         final_result = reviser_chain.invoke(reviser_input)
         print("\n--- 修订链输出 (最终稿部分) ---")

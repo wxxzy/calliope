@@ -1,0 +1,24 @@
+# ===================================================================
+# 用户文本切分器实例定义 (User Text Splitter Instances)
+# ===================================================================
+# 在这里定义您想要在UI中使用的具体文本切分器实例。
+
+# 默认的递归字符切分器 (适用于大多数英文场景)
+default_recursive:
+  template: "recursive_character"
+  description: "通用递归切分器，按段落、句子、单词逐级切分。"
+  chunk_size: 1000
+  chunk_overlap: 200
+
+# 默认的中文优化切分器 (推荐用于中文内容)
+default_chinese:
+  template: "chinese_optimized"
+  description: "为中文优化的切分器，优先按完整句子切分，避免截断。"
+  chunk_size: 800
+  chunk_overlap: 150
+
+# Markdown切分器
+markdown_splitter:
+  template: "markdown"
+  description: "根据Markdown的标题（#, ##, ###）进行结构化切分。"
+

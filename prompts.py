@@ -126,6 +126,9 @@ DRAFTER_PROMPT = PromptTemplate.from_template(
 ### 研究摘要 ###
 {research_results}
 
+### 相关记忆上下文 (由RAG系统提供) ###
+{retrieved_context}
+
 ### 当前需要撰写的章节 ###
 {section_to_write}
 
@@ -148,6 +151,9 @@ REVISER_PROMPT = PromptTemplate.from_template(
 
 ### 整体大纲 ###
 {outline}
+
+### 相关记忆上下文 (由RAG系统提供) ###
+{retrieved_context}
 
 ### 文章初稿 ###
 {full_draft}

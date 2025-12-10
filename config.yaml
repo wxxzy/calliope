@@ -35,3 +35,25 @@ steps:
   outliner: doubao_seed
   drafter: doubao_seed
   reviser: doubao_seed
+
+# ===================================================================
+# Embedding 模型定义
+# ===================================================================
+embeddings:
+  openai_embedding:
+    template: "openai"
+    model: "text-embedding-3-small"
+    api_key_env: "OPENAI_API_KEY"
+  
+  ollama_embedding:
+    template: "ollama"
+    model: "mxbai-embed-large"
+    base_url_env: "OLLAMA_BASE_URL"
+
+  google_embedding:
+    template: "google_genai"
+    model: "models/embedding-001"
+    api_key_env: "GOOGLE_API_KEY"
+
+# 指定当前激活的 embedding 模型
+active_embedding_model: "google_embedding"

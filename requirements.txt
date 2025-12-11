@@ -3,6 +3,7 @@ langchain-openai>=0.1.0
 langchain-anthropic>=0.1.0
 langchain-google-genai>=0.1.0
 langchain-community>=0.2.0
+langchain-huggingface>=0.0.1
 langchain-tavily>=0.0.3 # for TavilySearch
 langchain-exa>=0.1.0 # for Exa Search
 # langchain-brave_search>=0.0.3 # for Brave Search (if not included in langchain-community)

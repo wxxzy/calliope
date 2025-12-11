@@ -62,11 +62,18 @@ pip install -r requirements.txt
 *   **`steps` 部分:** 在这里将项目工作流的每一步（如 `planner`, `drafter`）映射到上面定义的模型实例ID。
 
 *   **`embeddings` 部分:** 在这里注册所有您想使用的Embedding模型实例。
-    *   `template`: Embedding模型使用的提供商模板ID (定义在 `provider_templates.yaml` 的 `embeddings` 部分)。
-    *   `model`: Embedding模型的API名称 (例如 `text-embedding-3-small` 或 `models/embedding-001`)。
-    *   `api_key_env`: (可选) Embedding模型API密钥对应的环境变量名称。
-    *   `base_url_env`: (可选) Embedding模型URL对应的环境变量名称。
-*   **`active_embedding_model`:** 指定当前激活的Embedding模型实例ID。
+    *   **`active_embedding_model`:** 指定当前激活的Embedding模型实例ID。
+
+**示例: 如何使用本地HuggingFace模型作为Embedding?**
+1.  确保 `sentence-transformers` 已安装 (已在`requirements.txt`中)。
+2.  在 `config.yaml` 的 `embeddings` 部分添加一个新实例:
+    ```yaml
+    my_local_embedding:
+      template: "huggingface"
+      model_name: "BAAI/bge-small-zh-v1.5" # 一个优秀的中文模型
+    ```
+3.  将 `active_embedding_model` 设置为 `my_local_embedding`。
+    *   **注意:** 首次使用时，`sentence-transformers` 会自动从Hugging Face Hub下载模型，这可能需要一些时间。
 
 #### 4.2. 配置工具 (`user_tools.yaml`)
 

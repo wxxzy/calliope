@@ -28,32 +28,32 @@ models:
     template: ollama
     model: qwen3:8b
     base_url_env: OLLAMA_BASE_URL
+  ernie-5.0-thinking-preview:
+    template: openai_compatible
+    model: ernie-5.0-thinking-latest
+    api_key_env: QIANFAN_API_KEY
+    base_url_env: QIANFAN_BASE_URL
 steps:
-  planner: doubao_seed
-  researcher: doubao_seed
-  summarizer: doubao_seed
-  outliner: doubao_seed
-  drafter: doubao_seed
-  reviser: doubao_seed
-
-# ===================================================================
-# Embedding 模型定义
-# ===================================================================
+  planner: gemini-2.5-flash
+  researcher: ernie-5.0-thinking-preview
+  summarizer: ernie-5.0-thinking-preview
+  outliner: ernie-5.0-thinking-preview
+  drafter: ernie-5.0-thinking-preview
+  reviser: ernie-5.0-thinking-preview
 embeddings:
   openai_embedding:
-    template: "openai"
-    model: "text-embedding-3-small"
-    api_key_env: "OPENAI_API_KEY"
-  
+    template: openai
+    model: text-embedding-3-small
+    api_key_env: OPENAI_API_KEY
   ollama_embedding:
-    template: "ollama"
-    model: "mxbai-embed-large"
-    base_url_env: "OLLAMA_BASE_URL"
-
+    template: ollama
+    model: mxbai-embed-large
+    base_url_env: OLLAMA_BASE_URL
   google_embedding:
-    template: "google_genai"
-    model: "models/embedding-001"
-    api_key_env: "GOOGLE_API_KEY"
-
-# 指定当前激活的 embedding 模型
-active_embedding_model: "google_embedding"
+    template: google_genai
+    model: models/embedding-001
+    api_key_env: GOOGLE_API_KEY
+  local_bge_embedding:
+    template: huggingface
+    model_name: BAAI/bge-small-zh-v1.5
+active_embedding_model: google_embedding

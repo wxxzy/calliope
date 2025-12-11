@@ -35,6 +35,10 @@ models:
     provider: "google"
     model_name: "gemini-1.5-flash-latest"
 
+  ernie-5.0-thinking-preview:
+    provider: "qianfan"
+    model_name: "ernie-5.0-thinking-preview"
+
   # --- 在这里添加您的自定义模型 ---
   # 例如，下面是火山方舟豆包模型的配置
   doubao_seed:
@@ -81,6 +85,10 @@ embeddings:
     model: "models/embedding-001"
     api_key_env: "GOOGLE_API_KEY"
 
+  local_bge_embedding:
+    template: "huggingface"
+    model_name: "BAAI/bge-small-zh-v1.5"
+
 # 指定当前激活的 embedding 模型
-active_embedding_model: "google_embedding"
+active_embedding_model: "local_bge_embedding"
 

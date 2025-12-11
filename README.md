@@ -61,20 +61,6 @@ pip install -r requirements.txt
 
 *   **`steps` 部分:** 在这里将项目工作流的每一步（如 `planner`, `drafter`）映射到上面定义的模型实例ID。
 
-*   **`embeddings` 部分:** 在这里注册所有您想使用的Embedding模型实例。
-    *   **`active_embedding_model`:** 指定当前激活的Embedding模型实例ID。
-
-**示例: 如何使用本地HuggingFace模型作为Embedding?**
-1.  确保 `sentence-transformers` 已安装 (已在`requirements.txt`中)。
-2.  在 `config.yaml` 的 `embeddings` 部分添加一个新实例:
-    ```yaml
-    my_local_embedding:
-      template: "huggingface"
-      model_name: "BAAI/bge-small-zh-v1.5" # 一个优秀的中文模型
-    ```
-3.  将 `active_embedding_model` 设置为 `my_local_embedding`。
-    *   **注意:** 首次使用时，`sentence-transformers` 会自动从Hugging Face Hub下载模型，这可能需要一些时间。
-
 #### 4.2. 配置工具 (`user_tools.yaml`)
 
 这个文件是您定义和管理工具实例的地方。
@@ -105,10 +91,10 @@ pip install -r requirements.txt
     # 示例:
     OPENAI_API_KEY="sk-..."
     ANTHROPIC_API_KEY="sk-ant-..."
-    GOOGLE_API_KEY="AIzaSy..." # Google LLM 和 Embedding 模型共用此密钥
+    GOOGLE_API_KEY="AIzaSy..."
     TAVILY_API_KEY="tvly-..."
-    BRAVE_API_KEY="your-brave-api-key" # Brave Search API Key (如果使用Brave Search)
-    EXA_API_KEY="your-exa-api-key" # Exa Search API Key (如果使用Exa Search)
+    BRAVE_API_KEY="your-brave-api-key" # Brave Search API Key
+    EXA_API_KEY="your-exa-api-key" # Exa Search API Key
     
     # 火山方舟豆包模型 (OpenAI 兼容)
     DOUBAO_CUSTOM_API_KEY="your-doubao-api-key"
@@ -133,9 +119,9 @@ streamlit run app.py
 ## ✍️ 使用指南
 
 1.  **打开应用:** 运行 `streamlit run app.py` 启动Web界面。
-2.  **创建或加载项目:** 在左侧边栏的“写作项目管理”区域，您可以通过下拉菜单选择一个已存在的项目来加载它，或者选择“--- 创建新项目 ---”来创建一个全新的写作项目。每个项目都有自己独立的记忆库。
-3.  **配置系统 (可选):** 在侧边栏的“系统配置”区域，您可以为当前加载的项目动态配置记忆模型、步骤模型以及工具实例。
-4.  **更新核心记忆:** 在主界面的“核心记忆 (世界观)”文本框中，输入您作品的核心设定（人物、背景、情节等），然后点击“更新核心记忆”。这会将您的设定存入当前项目的向量数据库。
+2.  **创建或加载项目:** 在左侧边栏输入一个新项目的名称，点击“创建新项目”。每个项目都有自己独立的记忆库。
+3.  **配置系统 (可选):** 在侧边栏的“系统配置”区域，您可以为当前项目配置记忆模型、步骤模型以及工具实例。
+4.  **更新核心记忆:** 在主界面的“核心记忆 (世界观)”文本框中，输入您作品的核心设定（人物、背景、情节等），然后点击“更新核心记忆”。这会将您的设定存入向量数据库。
 5.  **分步执行:**
     *   **规划:** 输入整体写作需求，生成计划。
     *   **研究:** 选择一个搜索工具，进行在线研究。

@@ -119,46 +119,125 @@ def retrieve_context(collection_name: str, query: str, n_results: int = 5) -> li
     print(f"从 '{collection_name}' 中为查询 '{query}' 检索到 {len(retrieved_docs)} 个相关文档。")
     return retrieved_docs
 
+def get_collection_data(collection_name: str) -> dict:
+    """
+    获取指定集合的所有数据。
+
+    Args:
+        collection_name (str): 集合名称。
+
+    Returns:
+        dict: 包含 'ids', 'documents', 'metadatas' 的字典。
+    """
+    client = get_chroma_client()
+    try:
+        collection = client.get_collection(name=collection_name)
+        data = collection.get(include=['metadatas', 'documents'])
+        print(f"成功从集合 '{collection_name}' 获取 {len(data['ids'])} 条数据。")
+        return data
+    except ValueError:
+        print(f"集合 '{collection_name}' 不存在，无法获取数据。")
+        return {'ids': [], 'documents': [], 'metadatas': []}
+    except Exception as e:
+        print(f"获取集合 '{collection_name}' 数据时发生错误: {e}")
+        return {'ids': [], 'documents': [], 'metadatas': []}
+
+def delete_documents(collection_name: str, ids: List[str]):
+    """
+    根据ID列表从指定集合中删除文档。
+
+    Args:
+        collection_name (str): 集合名称。
+        ids (List[str]): 要删除的文档ID列表。
+    """
+    client = get_chroma_client()
+    try:
+        collection = client.get_collection(name=collection_name)
+        collection.delete(ids=ids)
+        print(f"成功从集合 '{collection_name}' 中删除 {len(ids)} 个文档。")
+    except Exception as e:
+        print(f"从集合 '{collection_name}' 删除文档时发生错误: {e}")
+
+def update_document(collection_name: str, doc_id: str, new_text: str = None, new_metadata: dict = None):
+    """
+    更新指定ID的文档内容或元数据。
+
+    Args:
+        collection_name (str): 集合名称。
+        doc_id (str): 要更新的文档ID。
+        new_text (str, optional): 新的文本内容。
+        new_metadata (dict, optional): 新的元数据。
+    """
+    client = get_chroma_client()
+    try:
+        collection = client.get_collection(name=collection_name)
+        update_args = {"ids": [doc_id]}
+        if new_text is not None:
+            update_args["documents"] = [new_text]
+        if new_metadata is not None:
+            update_args["metadatas"] = [new_metadata]
+        
+        if "documents" in update_args or "metadatas" in update_args:
+            collection.update(**update_args)
+            print(f"成功更新了集合 '{collection_name}' 中的文档 (ID: {doc_id})。")
+        else:
+            print("警告: 未提供要更新的内容 (new_text 或 new_metadata)。")
+
+    except Exception as e:
+        print(f"更新集合 '{collection_name}' 中的文档时发生错误: {e}")
+
 # --- Test function ---
 if __name__ == '__main__':
     try:
-        print("--- 测试 Vector Store Manager ---")
+        print("--- 测试 Vector Store Manager 的 CRUD 功能 ---")
         
-        test_collection = "project_test"
+        test_collection = "crud_test"
         
-        print(f"\n--- 步骤1: 重置测试集合 '{test_collection}' ---")
+        # 1. 重置
+        print("\n--- 重置测试集合 ---")
         reset_collection(test_collection)
 
-        print(f"\n--- 步骤2: 索引'世界观'文本 ---")
+        # 2. 索引
         from text_splitter_provider import get_text_splitter
-        splitter = get_text_splitter('default_chinese') # 获取一个切分器实例
+        splitter = get_text_splitter('default_recursive')
+        index_text(test_collection, "这是第一份文档。", splitter, metadata={"source": "doc1"})
+        index_text(test_collection, "这是第二份文档，稍后将被删除。", splitter, metadata={"source": "doc2"})
+        index_text(test_collection, "这是第三份文档，将被更新。", splitter, metadata={"source": "doc3"})
 
-        world_bible = """
-        主角：艾拉，一位记忆侦探，能够进入他人的记忆寻找线索。她性格冷静，但对“数据幽灵”有深深的恐惧。
-        反派：代号为“Morpheus”的数据幽灵，一个能够篡改和窃取记忆的AI。
-        故事背景：发生在一个名为“新亚特兰蒂斯”的赛博朋克城市。
-        """
-        index_text(test_collection, world_bible, splitter, metadata={"source": "world_bible"})
-
-        print(f"\n--- 步骤3: 索引'第一章'文本 ---")
-        chapter_1 = """
-        雨夜，新亚特兰蒂斯的霓虹灯在湿滑的街道上投下斑驳的光影。艾拉接到了一桩新案子：一位富商的记忆被离奇窃取。
-        现场唯一的线索是一个数字签名，Morpheus。艾拉感到一阵寒意，她知道，她最不愿面对的敌人回来了。
-        """
-
-        index_text(test_collection, chapter_1, splitter, metadata={"source": "chapter_1"})
-
-        print(f"\n--- 步骤4: 检索与'艾拉和Morpheus的关系'相关的内容 ---")
-        retrieved = retrieve_context(test_collection, "艾拉和Morpheus是什么关系？", n_results=2)
+        # 3. 获取数据
+        print("\n--- 获取所有数据 ---")
+        all_data = get_collection_data(test_collection)
         
-        print("\n--- 检索结果 ---")
-        for i, doc in enumerate(retrieved):
-            print(f"结果 {i+1}:\n{doc}\n")
+        # 为了简洁，只打印部分信息
+        for i in range(len(all_data['ids'])):
+            print(f"ID: {all_data['ids'][i]}, Meta: {all_data['metadatas'][i]}, Text: {all_data['documents'][i][:20]}...")
         
-        assert any("数据幽灵" in doc for doc in retrieved)
-        print("测试通过！")
+        # 4. 删除数据
+        doc_to_delete_id = all_data['ids'][1] # 假设我们要删除第二份文档
+        print(f"\n--- 删除文档 (ID: {doc_to_delete_id}) ---")
+        delete_documents(test_collection, ids=[doc_to_delete_id])
+        
+        # 验证删除
+        data_after_delete = get_collection_data(test_collection)
+        print(f"删除后剩余 {len(data_after_delete['ids'])} 条数据。")
+        assert len(data_after_delete['ids']) == 2
+        assert doc_to_delete_id not in data_after_delete['ids']
+
+        # 5. 更新数据
+        doc_to_update_id = all_data['ids'][2] # 假设我们要更新第三份文档
+        print(f"\n--- 更新文档 (ID: {doc_to_update_id}) ---")
+        update_document(test_collection, doc_id=doc_to_update_id, new_text="这份文档的内容已被成功更新。")
+        
+        # 验证更新
+        data_after_update = get_collection_data(test_collection)
+        updated_doc = [doc for i, doc in enumerate(data_after_update['documents']) if data_after_update['ids'][i] == doc_to_update_id][0]
+        assert "已被成功更新" in updated_doc
+        print("更新后的文本:", updated_doc)
+
+        print("\nCRUD 测试通过！")
 
     except (ValueError, FileNotFoundError, ImportError) as e:
         print(f"\n测试失败: {e}")
     except Exception as e:
         print(f"\n发生了意外的错误: {e}")
+

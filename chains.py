@@ -6,6 +6,8 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from llm_provider import get_llm
 from prompts import PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT
+from vector_store_manager import retrieve_context
+
 
 def create_planner_chain():
     """

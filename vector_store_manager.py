@@ -3,9 +3,11 @@ Vector Store Manager
 负责管理ChromaDB向量数据库的连接、集合创建、数据索引和检索。
 """
 import os
+from typing import List
 # import chromadb # 移除直接导入，因为langchain_chroma会处理
 from langchain_chroma import Chroma
 from embedding_provider import get_embedding_model
+from typing import List
 
 # --- ChromaDB 客户端和集合管理 ---
 # 使用单例模式确保全局只有一个ChromaDB客户端实例
@@ -23,6 +25,12 @@ def get_chroma_client():
         _chroma_client_instance = chromadb.PersistentClient(path=chroma_path)
         print(f"ChromaDB持久化客户端已初始化于: {chroma_path}")
     return _chroma_client_instance
+
+def list_all_collections() -> List[str]:
+    """列出ChromaDB中所有集合的名称。"""
+    client = get_chroma_client()
+    collections = client.list_collections()
+    return [c.name for c in collections]
 
 def get_or_create_collection(collection_name: str):
     """获取或创建一个ChromaDB集合，并返回一个LangChain的VectorStore实例。"""

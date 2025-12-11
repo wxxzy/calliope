@@ -35,11 +35,11 @@ models:
     base_url_env: QIANFAN_BASE_URL
 steps:
   planner: gemini-2.5-flash
-  researcher: ernie-5.0-thinking-preview
-  summarizer: ernie-5.0-thinking-preview
-  outliner: ernie-5.0-thinking-preview
-  drafter: ernie-5.0-thinking-preview
-  reviser: ernie-5.0-thinking-preview
+  researcher: doubao_seed
+  summarizer: doubao_seed
+  outliner: doubao_seed
+  drafter: doubao_seed
+  reviser: doubao_seed
 embeddings:
   openai_embedding:
     template: openai
@@ -56,4 +56,4 @@ embeddings:
   local_bge_embedding:
     template: huggingface
     model_name: BAAI/bge-small-zh-v1.5
-active_embedding_model: google_embedding
+active_embedding_model: local_bge_embedding

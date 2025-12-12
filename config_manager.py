@@ -1,26 +1,70 @@
-"""
-配置管理器
-负责 config.yaml 文件的读取和写入。
-"""
 import yaml
+import os
+import re
 
 CONFIG_PATH = "config.yaml"
+USER_CONFIG_PATH = "user_config.yaml"
+PROVIDER_TEMPLATES_PATH = "provider_templates.yaml"
 
-def load_config():
+def _merge_configs(base_config: dict, user_config: dict) -> dict:
     """
-    加载并解析 config.yaml 文件。
+    合并基础配置和用户配置。
+    用户配置中的 'models' 和 'steps' 部分会覆盖或扩展基础配置。
+    """
+    merged_config = base_config.copy()
+
+    # 合并 models
+    if "models" in user_config:
+        merged_config["models"] = merged_config.get("models", {})
+        merged_config["models"].update(user_config["models"])
+    
+    # 合并 steps
+    if "steps" in user_config:
+        merged_config["steps"] = merged_config.get("steps", {})
+        merged_config["steps"].update(user_config["steps"])
+
+    # 合并 embeddings
+    if "embeddings" in user_config:
+        merged_config["embeddings"] = merged_config.get("embeddings", {})
+        merged_config["embeddings"].update(user_config["embeddings"])
+
+    # 合并 active_embedding_model
+    if "active_embedding_model" in user_config:
+        merged_config["active_embedding_model"] = user_config["active_embedding_model"]
+
+    return merged_config
+
+def load_user_config() -> dict:
+    """
+    加载并解析 user_config.yaml 文件。
+    """
+    try:
+        with open(USER_CONFIG_PATH, "r", encoding="utf-8") as f:
+            user_config = yaml.safe_load(f)
+        return user_config if user_config else {}
+    except FileNotFoundError:
+        return {}
+    except yaml.YAMLError as e:
+        raise ValueError(f"错误: 解析 {USER_CONFIG_PATH} 文件失败: {e}")
+
+def load_config() -> dict:
+    """
+    加载并解析 config.yaml 和 user_config.yaml 文件，并进行合并。
     """
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-        return config
+            base_config = yaml.safe_load(f)
+        
+        user_config = load_user_config()
+        merged_config = _merge_configs(base_config, user_config)
+        
+        return merged_config
     except FileNotFoundError:
-        # 如果文件不存在，可以返回一个空的或者默认的结构，防止应用崩溃
         return {"models": {}, "steps": {}}
     except yaml.YAMLError as e:
         raise ValueError(f"错误: 解析 {CONFIG_PATH} 文件失败: {e}")
 
-def load_provider_templates():
+def load_provider_templates() -> dict:
     """
     加载并解析 provider_templates.yaml 文件。
     """
@@ -28,40 +72,112 @@ def load_provider_templates():
     try:
         with open(templates_path, "r", encoding="utf-8") as f:
             templates = yaml.safe_load(f)
-        return templates
+        return templates if templates else {}
     except FileNotFoundError:
         return {}
     except yaml.YAMLError as e:
         raise ValueError(f"错误: 解析 {templates_path} 文件失败: {e}")
 
-def save_config(config_data: dict):
+def get_all_model_templates() -> dict:
     """
-    将配置字典写回到 config.yaml 文件。
+    获取所有模型提供商的模板及其参数定义。
+    """
+    templates = load_provider_templates()
+    # 过滤掉非模型类的模板，例如 'embeddings' 部分
+    model_templates = {k: v for k, v in templates.items() if 'class' in v and k != 'embeddings' and k != 'embedding_models'} # 'embedding_models' is a placeholder if a separate key is used for embedding models
+    return model_templates
+
+def get_all_embedding_templates() -> dict:
+    """
+    获取所有嵌入模型提供商的模板及其参数定义。
+    """
+    templates = load_provider_templates()
+    embedding_templates = templates.get("embeddings", {})
+    return embedding_templates
+
+def save_user_config(user_config_data: dict):
+    """
+    将用户配置字典写回到 user_config.yaml 文件。
 
     Args:
-        config_data (dict): 要保存的配置数据。
+        user_config_data (dict): 要保存的用户配置数据（例如 models 和 steps）。
+    """
+    try:
+        # 确保 user_config.yaml 目录存在
+        os.makedirs(os.path.dirname(USER_CONFIG_PATH) or '.', exist_ok=True)
+        with open(USER_CONFIG_PATH, "w", encoding="utf-8") as f:
+            yaml.dump(user_config_data, f, allow_unicode=True, sort_keys=False)
+    except Exception as e:
+        raise IOError(f"错误: 写入 {USER_CONFIG_PATH} 文件失败: {e}")
+
+def save_config(config_data: dict):
+    """
+    此函数现在仅用于保存基础的 config.yaml，不建议直接修改，
+    因为用户自定义配置应保存在 user_config.yaml 中。
+    （保留此函数以兼容现有代码，但未来应避免直接调用它修改用户配置）
     """
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            # allow_unicode=True 确保中文字符正确写入
-            # sort_keys=False 保持字典中原有的顺序
             yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
     except Exception as e:
         raise IOError(f"错误: 写入 {CONFIG_PATH} 文件失败: {e}")
 
 # --- Test function ---
 if __name__ == '__main__':
-    # 测试加载
-    print("--- 正在加载配置 ---")
+    # 清理旧的 user_config.yaml 以便测试
+    if os.path.exists(USER_CONFIG_PATH):
+        os.remove(USER_CONFIG_PATH)
+    
+    print("--- 初始加载配置 (user_config.yaml 不存在时) ---")
     current_config = load_config()
-    print(current_config)
+    print("加载的配置:")
+    print(yaml.dump(current_config, allow_unicode=True, sort_keys=False))
 
-    # 测试修改和保存
-    if current_config:
-        print("\n--- 正在修改配置 (将 planner 指向 claude_3_haiku) ---")
-        original_planner_model = current_config.get("steps", {}).get("planner")
-        current_config["steps"]["planner"] = "claude_3_haiku"
-        
-        print("--- 正在保存已修改的配置 ---")
-        save_config(current_config)
-        print("--- 已修改的配置已保存 ---")
+    # 测试 get_all_model_templates
+    print("\n--- 获取所有模型模板 ---")
+    model_templates = get_all_model_templates()
+    print(yaml.dump(model_templates, allow_unicode=True, sort_keys=False))
+    assert 'openai' in model_templates and 'ollama' in model_templates
+
+    # 测试 get_all_embedding_templates
+    print("\n--- 获取所有嵌入模型模板 ---")
+    embedding_templates = get_all_embedding_templates()
+    print(yaml.dump(embedding_templates, allow_unicode=True, sort_keys=False))
+    assert 'openai' in embedding_templates and 'ollama' in embedding_templates
+
+    # 模拟用户添加模型
+    print("\n--- 模拟用户添加一个新模型和修改 steps ---")
+    user_data_to_save = {
+        "models": {
+            "my_new_model": {
+                "template": "openai",
+                "model_name": "gpt-4o-mini",
+                "api_key_env": "OPENAI_API_KEY"
+            }
+        },
+        "steps": {
+            "drafter": "my_new_model"
+        },
+        "embeddings": {
+            "my_custom_embedding": {
+                "template": "openai",
+                "model": "text-embedding-3-large",
+                "api_key_env": "OPENAI_API_KEY"
+            }
+        },
+        "active_embedding_model": "my_custom_embedding"
+    }
+    save_user_config(user_data_to_save)
+    print("--- 用户配置已保存 ---")
+
+    print("\n--- 重新加载配置 (包含用户配置) ---")
+    merged_config = load_config()
+    print("合并后的配置:")
+    print(yaml.dump(merged_config, allow_unicode=True, sort_keys=False))
+
+    # 验证合并结果
+    assert "my_new_model" in merged_config["models"]
+    assert merged_config["steps"]["drafter"] == "my_new_model"
+    assert "my_custom_embedding" in merged_config["embeddings"]
+    assert merged_config["active_embedding_model"] == "my_custom_embedding"
+    print("\n--- 配置合并验证成功！---")

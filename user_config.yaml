@@ -1,0 +1,64 @@
+models:
+  gpt_4o:
+    template: openai
+    model_name: gpt-4o
+    api_key_env: OPENAI_API_KEY
+  gpt_3_5_turbo:
+    template: openai
+    model_name: gpt-3.5-turbo
+    api_key_env: OPENAI_API_KEY
+  claude_3_opus:
+    template: anthropic
+    model_name: claude-3-opus-20240229
+    api_key_env: ANTHROPIC_API_KEY
+  claude_3_haiku:
+    template: anthropic
+    model_name: claude-3-haiku-20240307
+    api_key_env: ANTHROPIC_API_KEY
+  gemini-2.5-flash:
+    template: google
+    model: gemini-2.5-flash
+    api_key_env: GOOGLE_API_KEY
+  doubao_seed:
+    template: openai_compatible
+    model_name: doubao-seed-1-6-251015
+    api_key_env: DOUBAO_CUSTOM_API_KEY
+    base_url_env: DOUBAO_CUSTOM_BASE_URL
+  llama3_8b:
+    template: ollama
+    model: qwen3:8b
+    base_url_env: OLLAMA_BASE_URL
+  ernie-5.0-thinking-preview:
+    template: openai_compatible
+    model: ernie-5.0-thinking-latest
+    api_key_env: QIANFAN_API_KEY
+    base_url_env: QIANFAN_BASE_URL
+  DeepSeek-V3.2:
+    template: openai_compatible
+    model_name: deepseek-v3-2-251201
+    api_key_env: DOUBAO_CUSTOM_API_KEY
+    base_url_env: DOUBAO_CUSTOM_BASE_URL
+steps:
+  planner: gemini-2.5-flash
+  researcher: DeepSeek-V3.2
+  summarizer: doubao_seed
+  outliner: doubao_seed
+  drafter: doubao_seed
+  reviser: doubao_seed
+embeddings:
+  openai_embedding:
+    template: openai
+    model: text-embedding-3-small
+    api_key_env: OPENAI_API_KEY
+  ollama_embedding:
+    template: ollama
+    model: mxbai-embed-large
+    base_url_env: OLLAMA_BASE_URL
+  google_embedding:
+    template: google_genai
+    model: models/embedding-001
+    api_key_env: GOOGLE_API_KEY
+  local_bge_embedding:
+    template: huggingface
+    model_name: BAAI/bge-small-zh-v1.5
+active_embedding_model: local_bge_embedding

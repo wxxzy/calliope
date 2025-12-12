@@ -63,7 +63,16 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         draft_content = drafter_chain.invoke(drafter_input)
         
         # 将新章节也加入记忆库
-        vector_store_manager.index_text(collection_name, draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
+        # print(f"DEBUG: Attempting to index draft content to collection: {collection_name}")
+        # print(f"DEBUG: Draft content length: {len(draft_content) if draft_content else 0}")
+        # print(f"DEBUG: Active splitter ID: {active_splitter_id}")
+        # print(f"DEBUG: Text splitter type: {type(text_splitter)}")
+        
+        if draft_content: # 只有当内容不为空时才进行索引
+            vector_store_manager.index_text(collection_name, draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
+            print(f"DEBUG: Draft content indexed successfully for chapter {state.get('drafting_index', 0) + 1}")
+        else:
+            print("DEBUG: draft_content is empty, skipping indexing.")
         
         return {"new_draft_content": draft_content}
         

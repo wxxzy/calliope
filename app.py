@@ -13,7 +13,7 @@ from tools import check_ollama_model_availability
 load_environment()
 
 # --- 页面配置 ---
-st.set_page_config(page_title="AI 长篇写作智能体 (带记忆)", page_icon="📚", layout="wide")
+st.set_page_config(page_title="AI 长篇写作智能体", page_icon="📚", layout="wide")
 
 # --- Helper Functions ---
 def sanitize_project_name(name: str) -> str:

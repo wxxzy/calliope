@@ -9,23 +9,31 @@ from prompts import PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, OU
 from vector_store_manager import retrieve_context
 
 
-def create_planner_chain():
+def _get_writing_style_instruction(writing_style: str) -> str:
+    """根据写作风格描述生成指令。"""
+    if writing_style:
+        return f"请严格遵循以下写作风格和要求：{writing_style}"
+    return ""
+
+def create_planner_chain(writing_style: str = ""):
     """
     创建并返回“规划”步骤的链。
     这个链接收用户输入，并返回一个结构化的写作计划。
     """
-    # 获取为“规划师”角色指定的LLM
     planner_llm = get_llm("planner")
     
-    # 使用LCEL（| 操作符）将提示、模型和输出解析器链接在一起
-    # 1. PLANNER_PROMPT: 接收一个字典（如 {"user_prompt": "..."}），生成一个格式化的提示。
-    # 2. planner_llm: 接收提示，返回一个AI消息（AIMessage）。
-    # 3. StrOutputParser: 从AI消息中提取内容，返回一个字符串。
-    planner_chain = PLANNER_PROMPT | planner_llm | StrOutputParser()
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+    
+    planner_chain = (
+        RunnablePassthrough.assign(user_prompt=RunnablePassthrough(), writing_style_instruction=lambda x: writing_style_instruction)
+        | PLANNER_PROMPT 
+        | planner_llm 
+        | StrOutputParser()
+    )
     
     return planner_chain
 
-def create_research_chain(search_tool):
+def create_research_chain(search_tool, writing_style: str = ""):
     """
     创建并返回“研究”步骤的链。
     这个链现在接收一个工具对象，使其具有通用性。
@@ -37,13 +45,21 @@ def create_research_chain(search_tool):
     
     Args:
         search_tool: 一个符合LangChain BaseTool规范的工具实例。
+        writing_style (str): 写作风格描述。
 
     Returns:
         A LangChain runnable instance.
     """
     
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+
     generate_queries_chain = (
-        RESEARCH_QUERY_PROMPT
+        RunnablePassthrough.assign(
+            plan=RunnablePassthrough(), 
+            user_prompt=RunnablePassthrough(),
+            writing_style_instruction=lambda x: writing_style_instruction
+        )
+        | RESEARCH_QUERY_PROMPT
         | get_llm("researcher")
         | StrOutputParser()
         | (lambda text: [line for line in text.strip().split("\n") if line.strip()]) # 解析为查询列表，并过滤空行
@@ -58,7 +74,12 @@ def create_research_chain(search_tool):
         return "\n\n---\n\n".join(all_results)
 
     summarize_chain = (
-        SUMMARIZER_PROMPT
+        RunnablePassthrough.assign(
+            user_prompt=RunnablePassthrough(),
+            search_results=RunnablePassthrough(), # search_results 由上一个步骤传入
+            writing_style_instruction=lambda x: writing_style_instruction
+        )
+        | SUMMARIZER_PROMPT
         | get_llm("summarizer")
         | StrOutputParser()
     )
@@ -76,19 +97,31 @@ def create_research_chain(search_tool):
     return research_chain
 
 
-def create_outliner_chain():
+def create_outliner_chain(writing_style: str = ""):
     """
     创建并返回“大纲”步骤的链。
     这个链接收plan, research_results, 和 user_prompt，生成详细大纲。
     """
     outliner_llm = get_llm("outliner")
     
-    outliner_chain = OUTLINER_PROMPT | outliner_llm | StrOutputParser()
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+
+    outliner_chain = (
+        RunnablePassthrough.assign(
+            plan=RunnablePassthrough(), 
+            user_prompt=RunnablePassthrough(),
+            research_results=RunnablePassthrough(),
+            writing_style_instruction=lambda x: writing_style_instruction
+        )
+        | OUTLINER_PROMPT 
+        | outliner_llm 
+        | StrOutputParser()
+    )
     
     return outliner_chain
 
 
-def create_drafter_chain(collection_name: str):
+def create_drafter_chain(collection_name: str, writing_style: str = ""):
     """
     创建并返回“撰写”步骤的链。
     增加了RAG步骤：在撰写前先从向量数据库检索上下文。
@@ -105,10 +138,19 @@ def create_drafter_chain(collection_name: str):
 
     drafter_llm = get_llm("drafter")
     
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+
     # RAG增强的撰写链
     rag_drafter_chain = (
         RunnablePassthrough.assign(
             retrieved_context=retrieve_and_format_context
+        )
+        | RunnablePassthrough.assign(
+            user_prompt=RunnablePassthrough(),
+            research_results=RunnablePassthrough(),
+            outline=RunnablePassthrough(),
+            section_to_write=RunnablePassthrough(),
+            writing_style_instruction=lambda x: writing_style_instruction
         )
         | DRAFTER_PROMPT
         | drafter_llm
@@ -119,7 +161,7 @@ def create_drafter_chain(collection_name: str):
 
 
 
-def create_reviser_chain(collection_name: str):
+def create_reviser_chain(collection_name: str, writing_style: str = ""):
     """
     创建并返回“修订”步骤的链。
     增加了RAG步骤：在修订前先检索最相关的上下文。
@@ -137,9 +179,17 @@ def create_reviser_chain(collection_name: str):
 
     reviser_llm = get_llm("reviser", temperature=0.5)
     
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+
     rag_reviser_chain = (
         RunnablePassthrough.assign(
             retrieved_context=retrieve_and_format_context_for_reviser
+        )
+        | RunnablePassthrough.assign(
+            plan=RunnablePassthrough(),
+            outline=RunnablePassthrough(),
+            full_draft=RunnablePassthrough(),
+            writing_style_instruction=lambda x: writing_style_instruction
         )
         | REVISER_PROMPT
         | reviser_llm

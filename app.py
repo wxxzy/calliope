@@ -26,16 +26,23 @@ def sanitize_project_name(name: str) -> str:
 
 def reset_project_state():
     """重置与特定项目内容相关的会话状态。"""
-    keys_to_reset = ['world_bible', 'plan', 'research_results', 'outline', 'drafts', 'drafting_index', 'final_manuscript', 'outline_sections']
+    keys_to_reset = [
+        'world_bible', 'plan', 'research_results', 'outline', 'drafts', 
+        'drafting_index', 'final_manuscript', 'outline_sections',
+        'project_writing_style_id', 'project_writing_style_description' # 添加写作风格相关的key
+    ]
     for key in keys_to_reset:
         if key in st.session_state:
             del st.session_state[key]
 
-def run_step_with_spinner(step_name: str, spinner_text: str):
+def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
     """带spinner的运行步骤的通用函数，返回结果。"""
+    # 从 st.session_state 获取项目专属的写作风格描述
+    project_writing_style_description = st.session_state.get('project_writing_style_description', '')
+
     with st.spinner(spinner_text):
         try:
-            result = workflow_manager.run_step(step_name, st.session_state)
+            result = workflow_manager.run_step(step_name, st.session_state, full_config, project_writing_style_description)
             st.success(f"步骤 '{step_name}' 已完成！")
             return result
         except Exception as e:
@@ -48,6 +55,9 @@ def run_step_with_spinner(step_name: str, spinner_text: str):
 # ==================================================================
 if __name__ == "__main__":
     
+    # 加载合并后的配置，使其在整个脚本范围内可用
+    full_config = config_manager.load_config()
+
     # --- 侧边栏 UI ---
     with st.sidebar:
         st.title("📚 AI 长篇写作智能体")
@@ -103,6 +113,38 @@ if __name__ == "__main__":
         collection_name = st.session_state.collection_name
         vector_store_manager.get_or_create_collection(collection_name) # 确保集合存在
 
+        # 获取所有写作风格（作为全局库）
+        global_writing_styles_library = full_config.get("writing_styles", {})
+        style_options = ["无 (默认)"] + list(global_writing_styles_library.keys())
+
+        # 初始化项目写作风格（如果不存在）
+        if 'project_writing_style_id' not in st.session_state:
+            st.session_state.project_writing_style_id = "无 (默认)"
+            st.session_state.project_writing_style_description = ""
+
+        with st.expander("📝 项目写作风格", expanded=True):
+            selected_project_style_id = st.selectbox(
+                "为当前项目选择写作风格:",
+                options=style_options,
+                index=style_options.index(st.session_state.project_writing_style_id) if st.session_state.project_writing_style_id in style_options else 0,
+                key="project_writing_style_selector"
+            )
+            
+            if selected_project_style_id != st.session_state.project_writing_style_id:
+                st.session_state.project_writing_style_id = selected_project_style_id
+                if selected_project_style_id == "无 (默认)":
+                    st.session_state.project_writing_style_description = ""
+                else:
+                    st.session_state.project_writing_style_description = global_writing_styles_library.get(selected_project_style_id, "")
+                st.info(f"项目写作风格已设置为: {st.session_state.project_writing_style_id}")
+                st.rerun() # 重新运行以更新依赖风格的组件
+
+            if st.session_state.project_writing_style_description:
+                st.markdown(f"**风格描述:** *{st.session_state.project_writing_style_description}*")
+            else:
+                st.info("当前未选择特定写作风格，LLM将采用其默认风格。")
+
+
         with st.container(border=True):
             st.subheader("🧠 核心记忆 (世界观)")
             st.text_area("在此输入项目的核心设定...", key="world_bible", height=200)
@@ -117,7 +159,7 @@ if __name__ == "__main__":
             st.subheader("第一步：规划")
             st.text_area("请输入您的整体写作需求：", key="user_prompt", height=100)
             if st.button("生成写作计划", type="primary"):
-                result = run_step_with_spinner("plan", "正在调用“规划师”...")
+                result = run_step_with_spinner("plan", "正在调用“规划师”...", full_config)
                 if result: st.session_state.update(result)
 
         if 'plan' in st.session_state:
@@ -127,7 +169,7 @@ if __name__ == "__main__":
                 user_tools = tool_provider.get_user_tools_config()
                 st.selectbox("选择搜索工具:", options=list(user_tools.keys()), key="selected_tool_id")
                 if st.button("开始研究", type="primary"):
-                    result = run_step_with_spinner("research", f"正在使用工具 '{st.session_state.selected_tool_id}' 进行研究...")
+                    result = run_step_with_spinner("research", f"正在使用工具 '{st.session_state.selected_tool_id}' 进行研究...", full_config)
                     if result: st.session_state.update(result)
 
         if 'research_results' in st.session_state:
@@ -135,7 +177,7 @@ if __name__ == "__main__":
             with st.container(border=True):
                 st.subheader("第三步：大纲")
                 if st.button("生成大纲", type="primary"):
-                    result = run_step_with_spinner("outline", "正在调用“大纲师”...")
+                    result = run_step_with_spinner("outline", "正在调用“大纲师”...", full_config)
                     if result: st.session_state.update(result)
 
         if 'outline' in st.session_state:
@@ -154,7 +196,7 @@ if __name__ == "__main__":
                         st.info(f"下一章节待撰写: {st.session_state.outline_sections[current].splitlines()[0]}")
                         if st.button(f"撰写章节 {current + 1}/{total}", type="primary"):
                             st.session_state.section_to_write = st.session_state.outline_sections[current]
-                            result = run_step_with_spinner("draft", "正在检索记忆并调用“写手”...")
+                            result = run_step_with_spinner("draft", "正在检索记忆并调用“写手”...", full_config)
                             if result and "new_draft_content" in result:
                                 drafts = st.session_state.get('drafts', [])
                                 drafts.append(result["new_draft_content"])
@@ -172,7 +214,7 @@ if __name__ == "__main__":
                 st.subheader("第五步：修订 (RAG增强)")
                 if st.button("开始修订全文", type="primary"):
                     st.session_state.full_draft = "\n\n".join(st.session_state.drafts)
-                    result = run_step_with_spinner("revise", "“总编辑”正在检索记忆并审阅全文...")
+                    result = run_step_with_spinner("revise", "“总编辑”正在检索记忆并审阅全文...", full_config)
                     if result: st.session_state.update(result)
 
         if 'final_manuscript' in st.session_state:
@@ -219,8 +261,7 @@ if __name__ == "__main__":
         all_model_templates = config_manager.get_all_model_templates()
         template_names = list(all_model_templates.keys())
 
-        # 加载合并后的配置以显示当前模型和进行验证
-        full_config = config_manager.load_config()
+        # 获取当前模型配置
         current_models_config = full_config.get("models", {})
 
         st.subheader("现有模型配置")
@@ -542,3 +583,71 @@ if __name__ == "__main__":
                         st.error(f"保存活跃嵌入模型失败: {e}")
         else:
             st.info("没有可用的嵌入模型可选。请先添加嵌入模型。")
+        
+        st.markdown("---")
+        st.subheader("写作风格库管理") # 仅管理库，不选择活跃风格
+
+        # 获取所有写作风格
+        current_writing_styles = full_config.get("writing_styles", {})
+
+        if current_writing_styles:
+            user_config_styles = config_manager.load_user_config().get("writing_styles", {})
+            user_defined_style_ids = list(user_config_styles.keys())
+
+            st.write("以下是所有可用写作风格 (包括默认和您自定义的)。您可以删除自定义风格。")
+
+            cols_style = st.columns([1, 4, 0.5]) # 风格ID | 描述 | 删除
+            cols_style[0].write("**风格ID**")
+            cols_style[1].write("**描述**")
+            cols_style[2].write("") # 删除列的标题留空
+
+            sorted_style_ids = sorted(current_writing_styles.keys())
+
+            for style_id in sorted_style_ids:
+                description = current_writing_styles[style_id]
+                col_style_display = st.columns([1, 4, 0.5])
+
+                col_style_display[0].write(style_id)
+                col_style_display[1].write(description)
+
+                if style_id in user_defined_style_ids:
+                    if col_style_display[2].button("删除", key=f"delete_style_{style_id}"):
+                        try:
+                            user_config = config_manager.load_user_config()
+                            if "writing_styles" in user_config and style_id in user_config["writing_styles"]:
+                                del user_config["writing_styles"][style_id]
+                            
+                            config_manager.save_user_config(user_config)
+                            st.success(f"写作风格 '{style_id}' 已成功删除！")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"删除写作风格失败: {e}")
+                else:
+                    col_style_display[2].write("") # 占位符
+        else:
+            st.info("未找到任何写作风格。")
+        
+        st.subheader("添加新写作风格到库中")
+        with st.form("add_new_writing_style_form", clear_on_submit=True):
+            new_style_id = st.text_input("新风格ID (例如: news_report)", key="new_style_id_input")
+            new_style_description = st.text_area("风格描述 (例如: 以客观、简洁、事实为基础的语言撰写)", key="new_style_description_input")
+            
+            submitted_style = st.form_submit_button("添加风格")
+            if submitted_style:
+                if not new_style_id:
+                    st.error("风格ID不能为空！")
+                elif new_style_id in current_writing_styles:
+                    st.error(f"风格ID '{new_style_id}' 已存在，请选择其他ID。")
+                elif not new_style_description:
+                    st.error("风格描述不能为空！")
+                else:
+                    try:
+                        user_config = config_manager.load_user_config()
+                        if "writing_styles" not in user_config:
+                            user_config["writing_styles"] = {}
+                        user_config["writing_styles"][new_style_id] = new_style_description
+                        config_manager.save_user_config(user_config)
+                        st.success(f"写作风格 '{new_style_id}' 已成功添加！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"保存风格失败: {e}")

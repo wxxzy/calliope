@@ -32,18 +32,23 @@ def _merge_configs(base_config: dict, user_config: dict) -> dict:
     if "active_embedding_model" in user_config:
         merged_config["active_embedding_model"] = user_config["active_embedding_model"]
 
+    # 合并 writing_styles
+    if "writing_styles" in user_config:
+        merged_config["writing_styles"] = merged_config.get("writing_styles", {})
+        merged_config["writing_styles"].update(user_config["writing_styles"])
+        
     return merged_config
-
+    
 def load_user_config() -> dict:
     """
     加载并解析 user_config.yaml 文件。
     """
     try:
+        if not os.path.exists(USER_CONFIG_PATH):
+            return {}
         with open(USER_CONFIG_PATH, "r", encoding="utf-8") as f:
             user_config = yaml.safe_load(f)
         return user_config if user_config else {}
-    except FileNotFoundError:
-        return {}
     except yaml.YAMLError as e:
         raise ValueError(f"错误: 解析 {USER_CONFIG_PATH} 文件失败: {e}")
 
@@ -52,6 +57,8 @@ def load_config() -> dict:
     加载并解析 config.yaml 和 user_config.yaml 文件，并进行合并。
     """
     try:
+        if not os.path.exists(CONFIG_PATH):
+            return {"models": {}, "steps": {}} # 基础配置不存在，返回空
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             base_config = yaml.safe_load(f)
         
@@ -68,15 +75,16 @@ def load_provider_templates() -> dict:
     """
     加载并解析 provider_templates.yaml 文件。
     """
-    templates_path = "provider_templates.yaml"
     try:
-        with open(templates_path, "r", encoding="utf-8") as f:
+        if not os.path.exists(PROVIDER_TEMPLATES_PATH):
+            return {}
+        with open(PROVIDER_TEMPLATES_PATH, "r", encoding="utf-8") as f:
             templates = yaml.safe_load(f)
         return templates if templates else {}
     except FileNotFoundError:
         return {}
     except yaml.YAMLError as e:
-        raise ValueError(f"错误: 解析 {templates_path} 文件失败: {e}")
+        raise ValueError(f"错误: 解析 {PROVIDER_TEMPLATES_PATH} 文件失败: {e}")
 
 def get_all_model_templates() -> dict:
     """
@@ -165,7 +173,11 @@ if __name__ == '__main__':
                 "api_key_env": "OPENAI_API_KEY"
             }
         },
-        "active_embedding_model": "my_custom_embedding"
+        "active_embedding_model": "my_custom_embedding",
+        "writing_styles": { # 添加 writing_styles 用于测试
+            "academic_report": "采用严谨、客观的学术报告风格，使用专业术语，避免口语化表达。",
+            "humorous_narrative": "以轻松幽默的口吻进行叙述，多用比喻、拟人等修辞手法，旨在逗乐读者。"
+        }
     }
     save_user_config(user_data_to_save)
     print("--- 用户配置已保存 ---")
@@ -180,4 +192,5 @@ if __name__ == '__main__':
     assert merged_config["steps"]["drafter"] == "my_new_model"
     assert "my_custom_embedding" in merged_config["embeddings"]
     assert merged_config["active_embedding_model"] == "my_custom_embedding"
+    assert "academic_report" in merged_config["writing_styles"] # 验证 writing_styles 是否合并成功
     print("\n--- 配置合并验证成功！---")

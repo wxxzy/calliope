@@ -9,6 +9,7 @@ PLANNER_PROMPT = PromptTemplate.from_template(
     """
 ### 指令 ###
 你是一位富有经验的写作规划专家。请根据用户的写作需求，以清晰、结构化的方式生成一份详细的写作计划。
+{writing_style_instruction}
 
 ### 用户需求 ###
 {user_prompt}
@@ -35,6 +36,7 @@ PLANNER_PROMPT = PromptTemplate.from_template(
 """
 )
 
+
 # 后续可以继续添加其他步骤的提示模板
 # e.g., OUTLINER_PROMPT, DRAFTER_PROMPT, etc.
 
@@ -43,6 +45,7 @@ RESEARCH_QUERY_PROMPT = PromptTemplate.from_template(
     """
 ### 指令 ###
 你是一位高效的信息检索专家。请根据以下“写作计划”和“用户原始需求”，生成3-5个最相关、最有效的Web搜索查询词。
+{writing_style_instruction}
 
 ### 用户原始需求 ###
 {user_prompt}
@@ -63,6 +66,7 @@ SUMMARIZER_PROMPT = PromptTemplate.from_template(
     """
 ### 指令 ###
 你是一位资深的行业分析师。请整合、提炼以下“网络搜索结果”，并根据“用户原始需求”，生成一份简明扼要、重点突出的研究摘要。摘要应包含关键事实、数据和不同角度的观点。
+{writing_style_instruction}
 
 ### 用户原始需求 ###
 {user_prompt}
@@ -80,6 +84,7 @@ OUTLINER_PROMPT = PromptTemplate.from_template(
     """
 ### 指令 ###
 你是一位顶级的结构设计师和内容策划师。你的任务是结合“写作计划”、“研究摘要”和“用户原始需求”，为即将创作的文章设计一个详尽、富有逻辑层次的写作大纲。
+{writing_style_instruction}
 
 ### 用户原始需求 ###
 {user_prompt}
@@ -116,6 +121,7 @@ DRAFTER_PROMPT = PromptTemplate.from_template(
     """
 ### 指令 ###
 你是一位专业的作家。你的任务是根据“整体写作大纲”和“研究摘要”，专注于撰写并扩充“当前需要撰写的章节”。请确保你的写作风格、语调与用户的原始需求保持一致，并自然地融入研究摘要中的相关信息。
+{writing_style_instruction}
 
 ### 用户原始需求 ###
 {user_prompt}
@@ -145,6 +151,7 @@ REVISER_PROMPT = PromptTemplate.from_template(
     """
 ### 指令 ###
 你是一位追求卓越的资深总编辑。你的任务是审查、修订和润色下面的“文章初稿”，使其达到可出版的质量标准。你需要严格对照“写作计划”和“整体大纲”，从全局视角进行优化。
+{writing_style_instruction}
 
 ### 写作计划 ###
 {plan}

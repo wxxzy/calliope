@@ -121,7 +121,7 @@ def create_outliner_chain(writing_style: str = ""):
     return outliner_chain
 
 
-def create_drafter_chain(collection_name: str, writing_style: str = ""):
+def create_drafter_chain(collection_name: str, writing_style: str = "", re_ranker=None):
     """
     创建并返回“撰写”步骤的链。
     增加了RAG步骤：在撰写前先从向量数据库检索上下文。
@@ -132,7 +132,9 @@ def create_drafter_chain(collection_name: str, writing_style: str = ""):
         retrieved_docs = retrieve_context(
             collection_name=collection_name,
             query=inputs["section_to_write"], # 使用要写的章节作为查询
-            n_results=3 
+            n_results=10, # 初始检索更多文档，以便重排器筛选
+            re_ranker=re_ranker,
+            re_ranker_top_n=3
         )
         return "\n\n---\n\n".join(retrieved_docs)
 
@@ -161,7 +163,7 @@ def create_drafter_chain(collection_name: str, writing_style: str = ""):
 
 
 
-def create_reviser_chain(collection_name: str, writing_style: str = ""):
+def create_reviser_chain(collection_name: str, writing_style: str = "", re_ranker=None):
     """
     创建并返回“修订”步骤的链。
     增加了RAG步骤：在修订前先检索最相关的上下文。
@@ -173,7 +175,9 @@ def create_reviser_chain(collection_name: str, writing_style: str = ""):
         retrieved_docs = retrieve_context(
             collection_name=collection_name,
             query=query,
-            n_results=5 
+            n_results=15, # 初始检索更多文档，以便重排器筛选
+            re_ranker=re_ranker,
+            re_ranker_top_n=5
         )
         return "\n\n---\n\n".join(retrieved_docs)
 

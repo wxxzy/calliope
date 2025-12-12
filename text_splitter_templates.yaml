@@ -10,6 +10,14 @@ recursive_character:
     chunk_size: "int"
     chunk_overlap: "int"
 
+# 增加一个语义分块优化过的递归字符切分器
+recursive_semantic_splitter:
+  class: "langchain_text_splitters.RecursiveCharacterTextSplitter"
+  params:
+    separators: ["\n\n", "\n", "。 ", "！ ", "？ ", ". ", "? ", "! ", " ", ""] # 优先按语义单元切分
+    chunk_size: "int"
+    chunk_overlap: "int"
+
 # LangChain 官方的Markdown切分器
 markdown:
   class: "langchain_text_splitters.MarkdownHeaderTextSplitter"

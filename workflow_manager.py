@@ -7,6 +7,7 @@ from chains import create_planner_chain, create_research_chain, create_outliner_
 import tool_provider
 import text_splitter_provider
 import vector_store_manager
+import re_ranker_provider # 导入 re_ranker_provider
 
 def run_step(step_name: str, state: dict, full_config: dict, writing_style_description: str):
     """
@@ -22,6 +23,14 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         dict: 更新后的状态。
     """
     collection_name = state.get("collection_name")
+
+    # 获取活跃的重排器实例
+    reranker_instance = None
+    if full_config.get("active_re_ranker_id"):
+        try:
+            reranker_instance = re_ranker_provider.get_re_ranker()
+        except Exception as e:
+            print(f"警告: 无法获取活跃重排器实例: {e}")
     
     if step_name == "plan":
         planner_chain = create_planner_chain(writing_style=writing_style_description)
@@ -49,11 +58,11 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         return {"outline": outline}
 
     elif step_name == "draft":
-        # 兼容旧代码，这里使用 full_config 获取 active_splitter_id
-        active_splitter_id = full_config.get('active_text_splitter', 'default_recursive')
+        # 从 full_config 获取 active_splitter_id
+        active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
         text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id)
         
-        drafter_chain = create_drafter_chain(collection_name, writing_style=writing_style_description)
+        drafter_chain = create_drafter_chain(collection_name, writing_style=writing_style_description, re_ranker=reranker_instance)
         drafter_input = {
             "user_prompt": state.get("user_prompt"),
             "research_results": state.get("research_results"),
@@ -63,21 +72,15 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         draft_content = drafter_chain.invoke(drafter_input)
         
         # 将新章节也加入记忆库
-        # print(f"DEBUG: Attempting to index draft content to collection: {collection_name}")
-        # print(f"DEBUG: Draft content length: {len(draft_content) if draft_content else 0}")
-        # print(f"DEBUG: Active splitter ID: {active_splitter_id}")
-        # print(f"DEBUG: Text splitter type: {type(text_splitter)}")
-        
         if draft_content: # 只有当内容不为空时才进行索引
             vector_store_manager.index_text(collection_name, draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
-            print(f"DEBUG: Draft content indexed successfully for chapter {state.get('drafting_index', 0) + 1}")
         else:
             print("DEBUG: draft_content is empty, skipping indexing.")
         
         return {"new_draft_content": draft_content}
         
     elif step_name == "revise":
-        reviser_chain = create_reviser_chain(collection_name, writing_style=writing_style_description)
+        reviser_chain = create_reviser_chain(collection_name, writing_style=writing_style_description, re_ranker=reranker_instance)
         reviser_input = {
             "plan": state.get("plan"),
             "outline": state.get("outline"),

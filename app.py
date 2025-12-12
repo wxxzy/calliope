@@ -7,6 +7,7 @@ import tool_provider
 import text_splitter_provider
 import vector_store_manager
 import workflow_manager
+import re_ranker_provider # 导入 re_ranker_provider
 from tools import check_ollama_model_availability
 
 # --- 在应用的最开始加载环境变量 ---
@@ -651,3 +652,149 @@ if __name__ == "__main__":
                         st.rerun()
                     except Exception as e:
                         st.error(f"保存风格失败: {e}")
+        
+        st.markdown("---")
+        st.subheader("重排器配置")
+
+        # 获取所有重排器模板
+        all_reranker_templates = re_ranker_provider.get_re_ranker_provider_templates()
+        reranker_template_names = list(all_reranker_templates.keys())
+
+        # 加载所有重排器配置
+        current_rerankers_config = full_config.get("re_rankers", {})
+        active_reranker_id = full_config.get("active_re_ranker_id")
+
+        if current_rerankers_config:
+            user_config_rerankers = config_manager.load_user_config().get("re_rankers", {})
+            user_defined_reranker_ids = list(user_config_rerankers.keys())
+
+            st.write("以下是所有可用重排器 (包括默认和您自定义的)。您可以删除自定义重排器。")
+            cols_reranker = st.columns([1, 2, 2, 0.5]) # ID | 模板 | 模型名称 | 删除
+            cols_reranker[0].write("**重排器ID**")
+            cols_reranker[1].write("**模板**")
+            cols_reranker[2].write("**模型名称**")
+            cols_reranker[3].write("") # 删除列的标题留空
+
+            sorted_reranker_ids = sorted(current_rerankers_config.keys())
+
+            for reranker_id in sorted_reranker_ids:
+                details = current_rerankers_config[reranker_id]
+                col_reranker_display = st.columns([1, 2, 2, 0.5])
+
+                model_name_display = details.get("model_name", "N/A")
+                
+                # 突出显示当前活跃的重排器
+                display_id = f"**{reranker_id} (活跃)**" if reranker_id == active_reranker_id else reranker_id
+
+                col_reranker_display[0].write(display_id)
+                col_reranker_display[1].write(details.get("template", "N/A"))
+                col_reranker_display[2].write(model_name_display)
+
+                if reranker_id in user_defined_reranker_ids:
+                    if col_reranker_display[3].button("删除", key=f"delete_reranker_{reranker_id}"):
+                        try:
+                            user_config = config_manager.load_user_config()
+                            if "re_rankers" in user_config and reranker_id in user_config["re_rankers"]:
+                                del user_config["re_rankers"][reranker_id]
+                            
+                            # 如果删除的是活跃重排器，则重置活跃重排器ID
+                            if user_config.get("active_re_ranker_id") == reranker_id:
+                                del user_config["active_re_ranker_id"]
+                            
+                            config_manager.save_user_config(user_config)
+                            st.success(f"重排器 '{reranker_id}' 已成功删除！")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"删除重排器失败: {e}")
+                else:
+                    col_reranker_display[3].write("") # 占位符
+        else:
+            st.info("未找到任何重排器配置。")
+        
+        st.subheader("添加新重排器")
+        with st.form("add_new_reranker_form", clear_on_submit=True):
+            new_reranker_id = st.text_input("新重排器ID (例如: my_cross_encoder)", key="new_reranker_id_input")
+            
+            # 动态设置默认选择的模板索引
+            default_reranker_template_index = 0
+            if "sentence_transformers_reranker" in reranker_template_names:
+                default_reranker_template_index = reranker_template_names.index("sentence_transformers_reranker")
+
+            selected_reranker_template_name = st.selectbox("选择模板", 
+                                                            options=reranker_template_names, 
+                                                            index=default_reranker_template_index,
+                                                            key="selected_reranker_template_name_select")
+
+            new_reranker_config = {}
+            if selected_reranker_template_name:
+                template_details = all_reranker_templates.get(selected_reranker_template_name, {})
+                template_params = template_details.get("params", {})
+                new_reranker_config["template"] = selected_reranker_template_name
+
+                for param_name, param_type in template_params.items():
+                    if param_name == "model_name":
+                        input_value = st.text_input(f"{param_name} (例如: cross-encoder/ms-marco-MiniLM-L-6-v2)", key=f"new_reranker_param_{param_name}")
+                        if input_value:
+                            new_reranker_config[param_name] = input_value
+                    elif param_type == "secret_env": # 如果有需要API Key的重排器
+                        input_value = st.text_input(f"{param_name} (例如: COHERE_API_KEY)", key=f"new_reranker_param_{param_name}")
+                        if input_value:
+                            new_reranker_config[param_name] = input_value
+            
+            submitted_reranker = st.form_submit_button("添加重排器")
+            if submitted_reranker:
+                if not new_reranker_id:
+                    st.error("重排器ID不能为空！")
+                elif new_reranker_id in current_rerankers_config:
+                    st.error(f"重排器ID '{new_reranker_id}' 已存在，请选择其他ID。")
+                elif not new_reranker_config.get("model_name"):
+                    st.error("重排器模型名称不能为空！")
+                else:
+                    try:
+                        user_config = config_manager.load_user_config()
+                        if "re_rankers" not in user_config:
+                            user_config["re_rankers"] = {}
+                        user_config["re_rankers"][new_reranker_id] = new_reranker_config
+                        config_manager.save_user_config(user_config)
+                        st.success(f"重排器 '{new_reranker_id}' 已成功添加！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"保存重排器失败: {e}")
+
+        st.markdown("---")
+        st.subheader("选择当前活跃的重排器")
+
+        available_reranker_ids = list(current_rerankers_config.keys())
+        
+        if available_reranker_ids:
+            with st.form("active_reranker_selection_form"):
+                default_active_reranker_index = 0
+                if active_reranker_id and active_reranker_id in available_reranker_ids:
+                    default_active_reranker_index = available_reranker_ids.index(active_reranker_id)
+                elif "my_reranker" in available_reranker_ids: # 尝试默认选择一个常用模型
+                    default_active_reranker_index = available_reranker_ids.index("my_reranker")
+                
+                selected_active_reranker_id = st.selectbox(
+                    "选择活跃的重排器:",
+                    options=["无 (默认)"] + available_reranker_ids,
+                    index=default_active_reranker_index + 1 if active_reranker_id else 0, # +1 for "无 (默认)"
+                    key="active_reranker_selector"
+                )
+                
+                submitted_active_reranker = st.form_submit_button("保存活跃重排器")
+                if submitted_active_reranker:
+                    try:
+                        user_config = config_manager.load_user_config()
+                        if selected_active_reranker_id == "无 (默认)":
+                            if "active_re_ranker_id" in user_config:
+                                del user_config["active_re_ranker_id"]
+                        else:
+                            user_config["active_re_ranker_id"] = selected_active_reranker_id
+                        
+                        config_manager.save_user_config(user_config)
+                        st.success(f"活跃重排器已设置为 '{selected_active_reranker_id}'！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"保存活跃重排器失败: {e}")
+        else:
+            st.info("没有可用的重排器可选。请先添加重排器。")

@@ -37,6 +37,15 @@ def _merge_configs(base_config: dict, user_config: dict) -> dict:
         merged_config["writing_styles"] = merged_config.get("writing_styles", {})
         merged_config["writing_styles"].update(user_config["writing_styles"])
         
+    # 合并 re_rankers
+    if "re_rankers" in user_config:
+        merged_config["re_rankers"] = merged_config.get("re_rankers", {})
+        merged_config["re_rankers"].update(user_config["re_rankers"])
+    
+    # 合并 active_re_ranker_id
+    if "active_re_ranker_id" in user_config:
+        merged_config["active_re_ranker_id"] = user_config["active_re_ranker_id"]
+
     return merged_config
     
 def load_user_config() -> dict:
@@ -177,7 +186,14 @@ if __name__ == '__main__':
         "writing_styles": { # 添加 writing_styles 用于测试
             "academic_report": "采用严谨、客观的学术报告风格，使用专业术语，避免口语化表达。",
             "humorous_narrative": "以轻松幽默的口吻进行叙述，多用比喻、拟人等修辞手法，旨在逗乐读者。"
-        }
+        },
+        "re_rankers": {
+            "my_reranker": {
+                "template": "sentence_transformers_reranker",
+                "model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2"
+            }
+        },
+        "active_re_ranker_id": "my_reranker"
     }
     save_user_config(user_data_to_save)
     print("--- 用户配置已保存 ---")
@@ -193,4 +209,6 @@ if __name__ == '__main__':
     assert "my_custom_embedding" in merged_config["embeddings"]
     assert merged_config["active_embedding_model"] == "my_custom_embedding"
     assert "academic_report" in merged_config["writing_styles"] # 验证 writing_styles 是否合并成功
+    assert "my_reranker" in merged_config["re_rankers"]
+    assert merged_config["active_re_ranker_id"] == "my_reranker"
     print("\n--- 配置合并验证成功！---")

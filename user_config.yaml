@@ -72,3 +72,8 @@ writing_styles:
     结构： 铺垫后紧跟‘神转折’（Punchline），多用反问句引发共鸣。”'
   文学与情感: 请使用细腻、温暖且富有画面感的文学风格。 语气： 舒缓、感性，带有一定的叙事感和治愈力。 用词： 多使用感官描写（视觉、听觉、嗅觉），善用比喻和拟人修辞，词藻优美但不堆砌。
     结构： 长短句交替，营造节奏感；注重氛围的渲染，而非单纯的信息罗列。
+re_rankers:
+  sentence_transformers_reranker:
+    template: sentence_transformers_reranker
+    model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
+active_re_ranker_id: sentence_transformers_reranker

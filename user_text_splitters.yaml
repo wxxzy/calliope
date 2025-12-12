@@ -22,3 +22,10 @@ markdown_splitter:
   template: "markdown"
   description: "根据Markdown的标题（#, ##, ###）进行结构化切分。"
 
+# 新增的语义优化递归切分器
+user_semantic_splitter:
+  template: "recursive_semantic_splitter"
+  description: "语义优化的递归切分器，优先按完整语义单位（如段落、句子）切分。"
+  chunk_size: 1500
+  chunk_overlap: 300
+

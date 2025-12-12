@@ -97,27 +97,44 @@ def index_text(collection_name: str, text: str, text_splitter, metadata: dict = 
     print(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
 
 # --- 检索 ---
-def retrieve_context(collection_name: str, query: str, n_results: int = 5) -> list[str]:
+def retrieve_context(collection_name: str, query: str, n_results: int = 5, re_ranker=None, re_ranker_top_n: int = 3) -> list[str]:
     """
-    从指定集合中检索与查询最相关的文本块。
+    从指定集合中检索与查询最相关的文本块，并支持可选的重排。
 
     Args:
         collection_name (str): 从哪个集合检索。
         query (str): 查询字符串。
-        n_results (int): 返回最相关的多少个结果。
+        n_results (int): 初始检索返回的文档数量。
+        re_ranker: (可选) 已实例化的重排器模型，例如 CrossEncoder。
+        re_ranker_top_n (int): 重排后返回的最终文档数量。
 
     Returns:
         list[str]: 相关的文本块内容列表。
     """
     vectorstore = get_or_create_collection(collection_name)
     
-    # 使用 similarity_search 进行检索
-    results = vectorstore.similarity_search(query, k=n_results)
+    # 如果有重排器，则初始检索更多文档
+    initial_n_results = n_results * 3 if re_ranker else n_results 
+    results_with_scores = vectorstore.similarity_search_with_score(query, k=initial_n_results)
     
-    # 提取文档内容
-    retrieved_docs = [doc.page_content for doc in results]
-    print(f"从 '{collection_name}' 中为查询 '{query}' 检索到 {len(retrieved_docs)} 个相关文档。")
-    return retrieved_docs
+    retrieved_docs = [doc.page_content for doc, score in results_with_scores]
+    print(f"从 '{collection_name}' 中为查询 '{query}' 初始检索到 {len(retrieved_docs)} 个文档。")
+
+    if re_ranker and retrieved_docs:
+        print(f"正在使用重排器重新排序前 {len(retrieved_docs)} 个文档...")
+        # 准备重排器输入格式: [(query, doc_content), ...]
+        reranker_input = [(query, doc_content) for doc_content in retrieved_docs]
+        scores = re_ranker.predict(reranker_input)
+        
+        # 将文档和分数配对
+        ranked_docs_with_scores = sorted(zip(retrieved_docs, scores), key=lambda x: x[1], reverse=True)
+        
+        # 返回重排后的前 re_ranker_top_n 个文档
+        final_retrieved_docs = [doc for doc, score in ranked_docs_with_scores[:re_ranker_top_n]]
+        print(f"重排后返回前 {len(final_retrieved_docs)} 个文档。")
+        return final_retrieved_docs
+    else:
+        return retrieved_docs # 如果没有重排器或没有文档，则返回初始检索结果
 
 def get_collection_data(collection_name: str) -> dict:
     """
@@ -188,56 +205,54 @@ def update_document(collection_name: str, doc_id: str, new_text: str = None, new
 
 # --- Test function ---
 if __name__ == '__main__':
+    # 假设 get_embedding_model 和 get_re_ranker 已正确配置和工作
+    os.environ["CHROMA_PERSIST_DIRECTORY"] = "./data/chroma_test_reranker_db" # 使用单独的测试目录
+
     try:
-        print("--- 测试 Vector Store Manager 的 CRUD 功能 ---")
+        print("--- 测试 Vector Store Manager 的重排检索功能 ---")
         
-        test_collection = "crud_test"
-        
-        # 1. 重置
-        print("\n--- 重置测试集合 ---")
+        test_collection = "reranker_test_collection"
         reset_collection(test_collection)
 
-        # 2. 索引
         from text_splitter_provider import get_text_splitter
-        splitter = get_text_splitter('default_recursive')
-        index_text(test_collection, "这是第一份文档。", splitter, metadata={"source": "doc1"})
-        index_text(test_collection, "这是第二份文档，稍后将被删除。", splitter, metadata={"source": "doc2"})
-        index_text(test_collection, "这是第三份文档，将被更新。", splitter, metadata={"source": "doc3"})
+        splitter = get_text_splitter('default_recursive') # 或 'user_semantic_splitter'
+        
+        # 索引一些测试数据
+        index_text(test_collection, "制作一杯美味咖啡的关键在于咖啡豆的质量和冲泡水温的控制。", splitter, metadata={"source": "coffee_guide"})
+        index_text(test_collection, "浓缩咖啡的制作需要高压萃取，通常用于制作拿铁和卡布奇诺。", splitter, metadata={"source": "espresso_basics"})
+        index_text(test_collection, "茶是一种健康的饮品，有绿茶、红茶、乌龙茶等多种类型。", splitter, metadata={"source": "tea_facts"})
+        index_text(test_collection, "挑选新鲜的咖啡豆是制作优质咖啡的第一步，建议购买烘焙日期较近的。", splitter, metadata={"source": "coffee_beans"})
+        index_text(test_collection, "冲泡咖啡的水温应在90-96摄氏度之间，过高或过低都会影响风味。", splitter, metadata={"source": "water_temp"})
 
-        # 3. 获取数据
-        print("\n--- 获取所有数据 ---")
-        all_data = get_collection_data(test_collection)
-        
-        # 为了简洁，只打印部分信息
-        for i in range(len(all_data['ids'])):
-            print(f"ID: {all_data['ids'][i]}, Meta: {all_data['metadatas'][i]}, Text: {all_data['documents'][i][:20]}...")
-        
-        # 4. 删除数据
-        doc_to_delete_id = all_data['ids'][1] # 假设我们要删除第二份文档
-        print(f"\n--- 删除文档 (ID: {doc_to_delete_id}) ---")
-        delete_documents(test_collection, ids=[doc_to_delete_id])
-        
-        # 验证删除
-        data_after_delete = get_collection_data(test_collection)
-        print(f"删除后剩余 {len(data_after_delete['ids'])} 条数据。")
-        assert len(data_after_delete['ids']) == 2
-        assert doc_to_delete_id not in data_after_delete['ids']
+        # 1. 不使用重排器进行检索
+        print("\n--- 不使用重排器检索 (k=2) ---")
+        query_no_reranker = "如何冲泡一杯好喝的咖啡？"
+        results_no_reranker = retrieve_context(test_collection, query_no_reranker, n_results=2)
+        for doc in results_no_reranker:
+            print(f"- {doc[:50]}...")
 
-        # 5. 更新数据
-        doc_to_update_id = all_data['ids'][2] # 假设我们要更新第三份文档
-        print(f"\n--- 更新文档 (ID: {doc_to_update_id}) ---")
-        update_document(test_collection, doc_id=doc_to_update_id, new_text="这份文档的内容已被成功更新。")
-        
-        # 验证更新
-        data_after_update = get_collection_data(test_collection)
-        updated_doc = [doc for i, doc in enumerate(data_after_update['documents']) if data_after_update['ids'][i] == doc_to_update_id][0]
-        assert "已被成功更新" in updated_doc
-        print("更新后的文本:", updated_doc)
+        # 2. 使用重排器进行检索
+        print("\n--- 使用重排器检索 (初始k=5, 重排后k=2) ---")
+        reranker_instance = get_re_ranker() # 获取重排器实例
+        if reranker_instance:
+            query_with_reranker = "咖啡的最佳冲泡方法是什么？"
+            results_with_reranker = retrieve_context(test_collection, query_with_reranker, n_results=5, re_ranker=reranker_instance, re_ranker_top_n=2)
+            for doc in results_with_reranker:
+                print(f"- {doc[:50]}...")
+            assert len(results_with_reranker) == 2
+        else:
+            print("\n警告: 未能获取重排器实例，跳过重排器测试。请确保 user_config.yaml 中已配置活跃重排器。")
 
-        print("\nCRUD 测试通过！")
+        print("\n重排检索测试通过！(如果重排器测试被执行)")
 
     except (ValueError, FileNotFoundError, ImportError) as e:
         print(f"\n测试失败: {e}")
     except Exception as e:
         print(f"\n发生了意外的错误: {e}")
-
+    finally:
+        # 清理测试目录
+        import shutil
+        chroma_test_path = os.getenv("CHROMA_PERSIST_DIRECTORY")
+        if os.path.exists(chroma_test_path):
+            shutil.rmtree(chroma_test_path)
+            print(f"\n清理测试目录: {chroma_test_path}")

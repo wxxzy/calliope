@@ -1,0 +1,17 @@
+# ===================================================================
+# 重排器模板 (Re-ranker Templates)
+# ===================================================================
+# 此文件定义了系统支持的重排器提供商的技术细节。
+# 注意: 需要安装 'sentence-transformers' 库
+
+sentence_transformers_reranker:
+  class: "sentence_transformers.cross_encoder.CrossEncoder"
+  params:
+    model_name: "string" # 交叉编码器模型名称，例如 "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+# 未来可添加其他重排器，如 Cohere (需要API Key)
+# cohere_reranker:
+#   class: "cohere.Client" # 或其LangChain封装
+#   params:
+#     api_key_env: "secret_env"
+#     model: "string" # e.g., "rerank-english-v2.0"

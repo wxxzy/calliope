@@ -3,27 +3,26 @@ Vector Store Manager
 负责管理ChromaDB向量数据库的连接、集合创建、数据索引和检索。
 """
 import os
-from typing import List
-# import chromadb # 移除直接导入，因为langchain_chroma会处理
+import chromadb
+from typing import List, Optional
 from langchain_chroma import Chroma
 from embedding_provider import get_embedding_model
-from typing import List
+import logging
+
+logger = logging.getLogger(__name__)
 
 # --- ChromaDB 客户端和集合管理 ---
-# 使用单例模式确保全局只有一个ChromaDB客户端实例
-_chroma_client_instance = None # 更名以避免与chromadb.Client混淆
+_chroma_client_instance = None 
 
 def get_chroma_client():
     """获取ChromaDB客户端单例。"""
     global _chroma_client_instance
     if _chroma_client_instance is None:
-        # 为了持久化，使用PersistentClient
-        import chromadb # 仅在需要时导入
         chroma_path = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
         os.makedirs(chroma_path, exist_ok=True) # 确保路径存在
         
         _chroma_client_instance = chromadb.PersistentClient(path=chroma_path)
-        print(f"ChromaDB持久化客户端已初始化于: {chroma_path}")
+        logger.info(f"ChromaDB持久化客户端已初始化于: {chroma_path}")
     return _chroma_client_instance
 
 def list_all_collections() -> List[str]:
@@ -45,7 +44,7 @@ def get_or_create_collection(collection_name: str):
         collection_name=collection_name,
         embedding_function=embedding_function
     )
-    print(f"ChromaDB集合 '{collection_name}' 已准备就绪。")
+    logger.info(f"ChromaDB集合 '{collection_name}' 已准备就绪。")
     return vectorstore
 
 def reset_collection(collection_name: str):
@@ -59,12 +58,12 @@ def reset_collection(collection_name: str):
     if collection_exists:
         try:
             client.delete_collection(name=collection_name)
-            print(f"集合 '{collection_name}' 已被删除。")
+            logger.info(f"集合 '{collection_name}' 已被删除。")
         except Exception as e:
-            print(f"尝试删除集合 '{collection_name}' 时发生错误: {e}")
+            logger.error(f"尝试删除集合 '{collection_name}' 时发生错误: {e}", exc_info=True)
             # 即使删除失败，也继续尝试创建，get_or_create_collection是幂等的
     else:
-        print(f"集合 '{collection_name}' 不存在，无需删除。")
+        logger.info(f"集合 '{collection_name}' 不存在，无需删除。")
         
     return get_or_create_collection(collection_name)
 
@@ -81,7 +80,7 @@ def index_text(collection_name: str, text: str, text_splitter, metadata: dict = 
         metadata (dict): (可选) 与此文本关联的元数据。
     """
     if not text or not text.strip():
-        print("警告: 尝试索引空文本，操作已跳过。")
+        logger.warning("尝试索引空文本，操作已跳过。")
         return
 
     # 1. 使用传入的切分器切块
@@ -94,7 +93,7 @@ def index_text(collection_name: str, text: str, text_splitter, metadata: dict = 
     metadatas = [metadata] * len(chunks) if metadata else None
     vectorstore.add_texts(texts=chunks, metadatas=metadatas)
     
-    print(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
+    logger.info(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
 
 # --- 检索 ---
 def retrieve_context(collection_name: str, query: str, n_results: int = 5, re_ranker=None, re_ranker_top_n: int = 3) -> list[str]:
@@ -118,10 +117,10 @@ def retrieve_context(collection_name: str, query: str, n_results: int = 5, re_ra
     results_with_scores = vectorstore.similarity_search_with_score(query, k=initial_n_results)
     
     retrieved_docs = [doc.page_content for doc, score in results_with_scores]
-    print(f"从 '{collection_name}' 中为查询 '{query}' 初始检索到 {len(retrieved_docs)} 个文档。")
+    logger.debug(f"从 '{collection_name}' 中为查询 '{query}' 初始检索到 {len(retrieved_docs)} 个文档。")
 
     if re_ranker and retrieved_docs:
-        print(f"正在使用重排器重新排序前 {len(retrieved_docs)} 个文档...")
+        logger.debug(f"正在使用重排器重新排序前 {len(retrieved_docs)} 个文档...")
         # 准备重排器输入格式: [(query, doc_content), ...]
         reranker_input = [(query, doc_content) for doc_content in retrieved_docs]
         scores = re_ranker.predict(reranker_input)
@@ -131,7 +130,7 @@ def retrieve_context(collection_name: str, query: str, n_results: int = 5, re_ra
         
         # 返回重排后的前 re_ranker_top_n 个文档
         final_retrieved_docs = [doc for doc, score in ranked_docs_with_scores[:re_ranker_top_n]]
-        print(f"重排后返回前 {len(final_retrieved_docs)} 个文档。")
+        logger.debug(f"重排后返回前 {len(final_retrieved_docs)} 个文档。")
         return final_retrieved_docs
     else:
         return retrieved_docs # 如果没有重排器或没有文档，则返回初始检索结果
@@ -150,13 +149,13 @@ def get_collection_data(collection_name: str) -> dict:
     try:
         collection = client.get_collection(name=collection_name)
         data = collection.get(include=['metadatas', 'documents'])
-        print(f"成功从集合 '{collection_name}' 获取 {len(data['ids'])} 条数据。")
+        logger.debug(f"成功从集合 '{collection_name}' 获取 {len(data['ids'])} 条数据。")
         return data
     except ValueError:
-        print(f"集合 '{collection_name}' 不存在，无法获取数据。")
+        logger.warning(f"集合 '{collection_name}' 不存在，无法获取数据。")
         return {'ids': [], 'documents': [], 'metadatas': []}
     except Exception as e:
-        print(f"获取集合 '{collection_name}' 数据时发生错误: {e}")
+        logger.error(f"获取集合 '{collection_name}' 数据时发生错误: {e}", exc_info=True)
         return {'ids': [], 'documents': [], 'metadatas': []}
 
 def delete_documents(collection_name: str, ids: List[str]):
@@ -171,9 +170,9 @@ def delete_documents(collection_name: str, ids: List[str]):
     try:
         collection = client.get_collection(name=collection_name)
         collection.delete(ids=ids)
-        print(f"成功从集合 '{collection_name}' 中删除 {len(ids)} 个文档。")
+        logger.info(f"成功从集合 '{collection_name}' 中删除 {len(ids)} 个文档。")
     except Exception as e:
-        print(f"从集合 '{collection_name}' 删除文档时发生错误: {e}")
+        logger.error(f"从集合 '{collection_name}' 删除文档时发生错误: {e}", exc_info=True)
 
 def update_document(collection_name: str, doc_id: str, new_text: str = None, new_metadata: dict = None):
     """
@@ -196,12 +195,12 @@ def update_document(collection_name: str, doc_id: str, new_text: str = None, new
         
         if "documents" in update_args or "metadatas" in update_args:
             collection.update(**update_args)
-            print(f"成功更新了集合 '{collection_name}' 中的文档 (ID: {doc_id})。")
+            logger.info(f"成功更新了集合 '{collection_name}' 中的文档 (ID: {doc_id})。")
         else:
-            print("警告: 未提供要更新的内容 (new_text 或 new_metadata)。")
+            logger.warning("未提供要更新的内容 (new_text 或 new_metadata)。")
 
     except Exception as e:
-        print(f"更新集合 '{collection_name}' 中的文档时发生错误: {e}")
+        logger.error(f"更新集合 '{collection_name}' 中的文档时发生错误: {e}", exc_info=True)
 
 # --- Test function ---
 if __name__ == '__main__':
@@ -209,7 +208,7 @@ if __name__ == '__main__':
     os.environ["CHROMA_PERSIST_DIRECTORY"] = "./data/chroma_test_reranker_db" # 使用单独的测试目录
 
     try:
-        print("--- 测试 Vector Store Manager 的重排检索功能 ---")
+        logger.info("--- 测试 Vector Store Manager 的重排检索功能 ---")
         
         test_collection = "reranker_test_collection"
         reset_collection(test_collection)
@@ -225,34 +224,34 @@ if __name__ == '__main__':
         index_text(test_collection, "冲泡咖啡的水温应在90-96摄氏度之间，过高或过低都会影响风味。", splitter, metadata={"source": "water_temp"})
 
         # 1. 不使用重排器进行检索
-        print("\n--- 不使用重排器检索 (k=2) ---")
+        logger.info("\n--- 不使用重排器检索 (k=2) ---")
         query_no_reranker = "如何冲泡一杯好喝的咖啡？"
         results_no_reranker = retrieve_context(test_collection, query_no_reranker, n_results=2)
         for doc in results_no_reranker:
-            print(f"- {doc[:50]}...")
+            logger.info(f"- {doc[:50]}...")
 
         # 2. 使用重排器进行检索
-        print("\n--- 使用重排器检索 (初始k=5, 重排后k=2) ---")
+        logger.info("\n--- 使用重排器检索 (初始k=5, 重排后k=2) ---")
         reranker_instance = get_re_ranker() # 获取重排器实例
         if reranker_instance:
             query_with_reranker = "咖啡的最佳冲泡方法是什么？"
             results_with_reranker = retrieve_context(test_collection, query_with_reranker, n_results=5, re_ranker=reranker_instance, re_ranker_top_n=2)
             for doc in results_with_reranker:
-                print(f"- {doc[:50]}...")
+                logger.info(f"- {doc[:50]}...")
             assert len(results_with_reranker) == 2
         else:
-            print("\n警告: 未能获取重排器实例，跳过重排器测试。请确保 user_config.yaml 中已配置活跃重排器。")
+            logger.warning("未能获取重排器实例，跳过重排器测试。请确保 user_config.yaml 中已配置活跃重排器。")
 
-        print("\n重排检索测试通过！(如果重排器测试被执行)")
+        logger.info("\n重排检索测试通过！(如果重排器测试被执行)")
 
     except (ValueError, FileNotFoundError, ImportError) as e:
-        print(f"\n测试失败: {e}")
+        logger.error(f"\n测试失败: {e}", exc_info=True)
     except Exception as e:
-        print(f"\n发生了意外的错误: {e}")
+        logger.error(f"\n发生了意外的错误: {e}", exc_info=True)
     finally:
         # 清理测试目录
         import shutil
         chroma_test_path = os.getenv("CHROMA_PERSIST_DIRECTORY")
         if os.path.exists(chroma_test_path):
             shutil.rmtree(chroma_test_path)
-            print(f"\n清理测试目录: {chroma_test_path}")
+            logger.info(f"\n清理测试目录: {chroma_test_path}")

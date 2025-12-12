@@ -100,7 +100,3 @@ re_rankers:
     class: "sentence_transformers.cross_encoder.CrossEncoder"
     params:
       model_name: "string" # 交叉编码器模型名称，例如 "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
-
-
-  # 未来可以添加 HuggingFaceEmbeddings 等

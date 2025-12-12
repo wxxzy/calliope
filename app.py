@@ -1,17 +1,22 @@
 import streamlit as st
 import os
 import re
+import logging # 导入 logging 模块
 from config import load_environment
 import config_manager
 import tool_provider
 import text_splitter_provider
 import vector_store_manager
 import workflow_manager
-import re_ranker_provider # 导入 re_ranker_provider
+import re_ranker_provider
 from tools import check_ollama_model_availability
+import logger_config # 导入日志配置模块
 
 # --- 在应用的最开始加载环境变量 ---
 load_environment()
+# --- 初始化日志系统 ---
+logger_config.setup_logging()
+app_logger = logging.getLogger(__name__) # 获取当前模块的logger
 
 # --- 页面配置 ---
 st.set_page_config(page_title="AI 长篇写作智能体", page_icon="📚", layout="wide")
@@ -48,7 +53,7 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             return result
         except Exception as e:
             st.error(f"执行步骤 '{step_name}' 时发生错误: {e}")
-            print(f"详细错误: {e}")
+            app_logger.error(f"执行步骤 '{step_name}' 时发生错误: {e}", exc_info=True) # 使用 logger.error 记录异常和堆栈跟踪
             return None
 
 # ==================================================================

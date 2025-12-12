@@ -7,6 +7,9 @@ import yaml
 import importlib
 from functools import lru_cache, partial
 from langchain_core.tools import Tool # 统一导入Tool
+import logging
+
+logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=None)
 def _load_yaml(file_path: str):
@@ -15,8 +18,10 @@ def _load_yaml(file_path: str):
         with open(file_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
+        logger.error(f"配置文件 {file_path} 未找到。", exc_info=True)
         raise FileNotFoundError(f"错误: 配置文件 {file_path} 未找到。")
     except yaml.YAMLError as e:
+        logger.error(f"解析 {file_path} 文件失败: {e}", exc_info=True)
         raise ValueError(f"错误: 解析 {file_path} 文件失败: {e}")
 
 def get_tool_templates():
@@ -25,6 +30,7 @@ def get_tool_templates():
 
 def get_user_tools_config():
     """加载并返回用户工具配置。"""
+    # 每次都重新加载，以反映UI上的动态修改
     return _load_yaml("user_tools.yaml")
 
 def save_user_tools_config(config_data: dict):
@@ -32,7 +38,9 @@ def save_user_tools_config(config_data: dict):
     try:
         with open("user_tools.yaml", "w", encoding="utf-8") as f:
             yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
+        logger.info(f"用户工具配置已成功保存到 user_tools.yaml。")
     except Exception as e:
+        logger.error(f"写入 user_tools.yaml 文件失败: {e}", exc_info=True)
         raise IOError(f"错误: 写入 user_tools.yaml 文件失败: {e}")
 
 def _get_callable_from_path(path: str):
@@ -42,6 +50,7 @@ def _get_callable_from_path(path: str):
         module = importlib.import_module(module_path)
         return getattr(module, callable_name)
     except (ImportError, AttributeError) as e:
+        logger.error(f"无法从路径 '{path}' 动态导入: {e}", exc_info=True)
         raise ImportError(f"无法从路径 '{path}' 动态导入: {e}")
 
 def get_tool(tool_id: str):
@@ -60,15 +69,18 @@ def get_tool(tool_id: str):
     # 1. 找到用户工具实例的配置
     tool_config = user_tools.get(tool_id)
     if not tool_config:
+        logger.error(f"在 user_tools.yaml 中找不到工具ID '{tool_id}'。")
         raise ValueError(f"错误: 在 user_tools.yaml 中找不到工具ID '{tool_id}'。")
     
     # 2. 找到该实例使用的模板
     template_id = tool_config.get("template")
     if not template_id:
+        logger.error(f"工具 '{tool_id}' 的配置中缺少 'template' 字段。")
         raise ValueError(f"错误: 工具 '{tool_id}' 的配置中缺少 'template' 字段。")
         
     template = templates.get(template_id)
     if not template:
+        logger.error(f"在 tool_templates.yaml 中找不到模板ID '{template_id}'。")
         raise ValueError(f"错误: 在 tool_templates.yaml 中找不到模板ID '{template_id}'。")
 
     # 3. 准备构造函数/函数参数
@@ -83,6 +95,7 @@ def get_tool(tool_id: str):
             if param_schema_type == "secret_env" or param_schema_type == "url_env":
                 env_var_value = os.getenv(user_value) # user_value 现在是环境变量名
                 if not env_var_value:
+                    logger.error(f"工具 '{tool_id}' 需要环境变量 '{user_value}'，但它未被设置。")
                     raise ValueError(f"错误: 工具 '{tool_id}' 需要环境变量 '{user_value}'，但它未被设置。")
                 
                 # 转换参数名 (e.g., 'tavily_api_key_env' -> 'tavily_api_key')
@@ -91,6 +104,7 @@ def get_tool(tool_id: str):
                 try:
                     constructor_params[param_name] = int(user_value)
                 except ValueError:
+                    logger.error(f"工具 '{tool_id}' 的参数 '{param_name}' 需要整数类型，但收到 '{user_value}'。", exc_info=True)
                     raise ValueError(f"错误: 工具 '{tool_id}' 的参数 '{param_name}' 需要整数类型，但收到 '{user_value}'。")
             elif param_schema_type == "bool":
                 constructor_params[param_name] = str(user_value).lower() == "true"
@@ -99,7 +113,7 @@ def get_tool(tool_id: str):
             else: # 未知类型，直接传递
                 constructor_params[param_name] = user_value
     
-    print(f"正在实例化工具: '{tool_id}' (模板: '{template_id}')")
+    logger.info(f"正在实例化工具: '{tool_id}' (模板: '{template_id}')")
 
     # 4. 获取工具的通用描述 (用于Tool.from_function或Agent)
     tool_description = tool_config.get("description", f"执行ID为'{tool_id}'的工具")
@@ -117,6 +131,7 @@ def get_tool(tool_id: str):
             
             return ToolClass(**valid_params_for_class)
         except Exception as e:
+            logger.error(f"实例化工具类 '{template['class']}' 失败: {e}\n使用的参数: {constructor_params}", exc_info=True)
             raise ValueError(f"实例化工具类 '{template['class']}' 失败: {e}\n使用的参数: {constructor_params}")
     
     elif "function" in template:
@@ -141,31 +156,32 @@ def get_tool(tool_id: str):
         )
         
     else:
-        raise ValueError(f"模板 '{template_id}' 中必须包含 'class' 或 'function' 字段。")
+        logger.error(f"模板 '{template_id}' 中必须包含 'class' 或 'function' 字段。")
+        raise ValueError(f"错误: 模板 '{template_id}' 中必须包含 'class' 或 'function' 字段。")
 
 # --- Test function ---
 if __name__ == '__main__':
     # 请确保您已创建 user_tools.yaml, tool_templates.yaml 和 .env 文件并正确配置
     try:
-        print("--- 测试工具提供商 ---")
+        logger.info("--- 测试工具提供商 ---")
         
-        print("\n--- 测试 tavily_default ---")
+        logger.info("\n--- 测试 tavily_default ---")
         tavily_tool = get_tool("tavily_default")
-        print(f"成功获取: {tavily_tool.name}, 类型: {type(tavily_tool)}")
+        logger.info(f"成功获取: {tavily_tool.name}, 类型: {type(tavily_tool)}")
         
-        print("\n--- 测试 ddg_default ---")
+        logger.info("\n--- 测试 ddg_default ---")
         ddg_tool = get_tool("ddg_default")
-        print(f"成功获取: {ddg_tool.name}, 类型: {type(ddg_tool)}")
+        logger.info(f"成功获取: {ddg_tool.name}, 类型: {type(ddg_tool)}")
 
-        print("\n--- 测试 brave_default ---")
+        logger.info("\n--- 测试 brave_default ---")
         brave_tool = get_tool("brave_default")
-        print(f"成功获取: {brave_tool.name}, 类型: {type(brave_tool)}")
+        logger.info(f"成功获取: {brave_tool.name}, 类型: {type(brave_tool)}")
 
-        print("\n--- 测试 my_custom_web_search ---")
+        logger.info("\n--- 测试 my_custom_web_search ---")
         custom_search_tool = get_tool("my_custom_web_search")
-        print(f"成功获取: {custom_search_tool.name}, 类型: {type(custom_search_tool)}")
+        logger.info(f"成功获取: {custom_search_tool.name}, 类型: {type(custom_search_tool)}")
 
     except (ValueError, FileNotFoundError, ImportError) as e:
-        print(f"\n测试失败: {e}")
+        logger.error(f"\n测试失败: {e}", exc_info=True)
     except Exception as e:
-        print(f"\n发生了意外的错误: {e}")
+        logger.error(f"\n发生了意外的错误: {e}", exc_info=True)

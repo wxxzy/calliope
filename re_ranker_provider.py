@@ -6,6 +6,9 @@ import os
 import importlib
 from functools import lru_cache
 from config_manager import load_config, load_provider_templates
+import logging
+
+logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=1)
 def get_re_ranker_provider_templates():
@@ -20,6 +23,7 @@ def _get_class_from_path(class_path: str):
         module = importlib.import_module(module_path)
         return getattr(module, class_name)
     except (ImportError, AttributeError) as e:
+        logger.error(f"无法从路径 '{class_path}' 动态导入类: {e}", exc_info=True)
         raise ImportError(f"无法从路径 '{class_path}' 动态导入类: {e}")
 
 def get_re_ranker():
@@ -31,18 +35,22 @@ def get_re_ranker():
     
     active_re_ranker_id = config.get("active_re_ranker_id")
     if not active_re_ranker_id:
+        logger.debug("未配置活跃重排器，返回None。")
         return None # 如果没有配置活跃重排器，则返回None
         
     user_re_ranker_config = config.get("re_rankers", {}).get(active_re_ranker_id)
     if not user_re_ranker_config:
+        logger.error(f"在配置中找不到重排器ID '{active_re_ranker_id}'。")
         raise ValueError(f"错误: 在配置中找不到重排器ID '{active_re_ranker_id}'。")
 
     template_id = user_re_ranker_config.get("template")
     if not template_id:
+        logger.error(f"重排器 '{active_re_ranker_id}' 的配置中缺少 'template' 字段。")
         raise ValueError(f"错误: 重排器 '{active_re_ranker_id}' 的配置中缺少 'template' 字段。")
     
     provider_template = re_ranker_templates.get(template_id)
     if not provider_template:
+        logger.error(f"在重排器模板中找不到模板ID '{template_id}'。")
         raise ValueError(f"错误: 在 re_ranker_templates.yaml 中找不到模板ID '{template_id}'。")
     
     ReRankerClass = _get_class_from_path(provider_template["class"])
@@ -56,6 +64,7 @@ def get_re_ranker():
             if param_type == "secret_env":
                 env_var_value = os.getenv(user_value)
                 if not env_var_value:
+                    logger.error(f"重排器 '{active_re_ranker_id}' 需要设置环境变量 '{user_value}'。")
                     raise ValueError(f"错误: 需要为重排器 '{active_re_ranker_id}' 设置环境变量 '{user_value}'。")
                 constructor_params[param_name] = env_var_value # 例如 API Key
             elif param_type == "string":
@@ -65,11 +74,12 @@ def get_re_ranker():
                 else:
                     constructor_params[param_name] = user_value
                 
-    print(f"正在实例化重排器: {active_re_ranker_id} (类: {ReRankerClass.__name__})")
+    logger.info(f"正在实例化重排器: {active_re_ranker_id} (类: {ReRankerClass.__name__})")
     
     try:
         return ReRankerClass(**constructor_params)
     except Exception as e:
+        logger.error(f"实例化重排器 '{active_re_ranker_id}' 失败: {e}\n使用的参数: {constructor_params}", exc_info=True)
         raise ValueError(f"实例化重排器 '{active_re_ranker_id}' 失败: {e}\n使用的参数: {constructor_params}")
 
 # --- Test function ---
@@ -82,10 +92,10 @@ if __name__ == '__main__':
     #     model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
     # active_re_ranker_id: my_reranker
     try:
-        print("--- 测试重排器提供商 ---")
+        logger.info("--- 测试重排器提供商 ---")
         reranker = get_re_ranker()
         if reranker:
-            print(f"成功获取实例: {type(reranker)}")
+            logger.info(f"成功获取实例: {type(reranker)}")
             # 简单的测试重排功能
             query = "How to make a good cup of coffee?"
             docs = [
@@ -94,12 +104,12 @@ if __name__ == '__main__':
                 "Tea is a beverage made from the leaves of the tea plant."
             ]
             scores = reranker.predict([(query, doc) for doc in docs])
-            print(f"重排分数: {scores}")
+            logger.info(f"重排分数: {scores}")
             assert len(scores) == len(docs)
         else:
-            print("未配置活跃重排器，跳过测试。" )
+            logger.warning("未配置活跃重排器，跳过测试。")
 
     except (ValueError, FileNotFoundError, ImportError) as e:
-        print(f"\n测试失败: {e}")
+        logger.error(f"测试失败: {e}", exc_info=True)
     except Exception as e:
-        print(f"\n发生了意外的错误: {e}")
+        logger.error(f"发生了意外的错误: {e}", exc_info=True)

@@ -7,7 +7,9 @@ from langchain_core.output_parsers import StrOutputParser
 from llm_provider import get_llm
 from prompts import PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT
 from vector_store_manager import retrieve_context
+import logging
 
+logger = logging.getLogger(__name__)
 
 def _get_writing_style_instruction(writing_style: str) -> str:
     """根据写作风格描述生成指令。"""
@@ -68,7 +70,7 @@ def create_research_chain(search_tool, writing_style: str = ""):
     def run_search_and_aggregate(queries: list) -> str:
         all_results = []
         for query in queries:
-            print(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}'")
+            logger.debug(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}'")
             tool_result = search_tool.invoke(query)
             all_results.append(str(tool_result)) # 确保结果是字符串
         return "\n\n---\n\n".join(all_results)
@@ -211,13 +213,13 @@ if __name__ == '__main__':
     
     try:
         # --- 1. 规划 ---
-        print("="*20 + "\n1. 调用规划链...\n" + "="*20)
+        logger.info("="*20 + "\n1. 调用规划链...\n" + "="*20)
         planner_chain = create_planner_chain()
         plan_result = planner_chain.invoke({"user_prompt": test_user_prompt})
-        print(plan_result)
+        logger.info(plan_result)
 
         # --- 2. 测试研究链 ---
-        print("\n" + "="*20 + "\n2. 调用研究链...\n" + "="*20)
+        logger.info("\n" + "="*20 + "\n2. 调用研究链...\n" + "="*20)
         
         # 首先，获取一个工具实例
         from tool_provider import get_tool
@@ -227,11 +229,11 @@ if __name__ == '__main__':
         research_chain = create_research_chain(search_tool=search_tool) 
         research_input = {"plan": plan_result, "user_prompt": test_user_prompt}
         research_result = research_chain.invoke(research_input)
-        print(research_result)
-        print("="*20)
+        logger.info(research_result)
+        logger.info("="*20)
 
         # --- 3. 大纲 ---
-        print("\n" + "="*20 + "\n3. 调用大纲链...\n" + "="*20)
+        logger.info("\n" + "="*20 + "\n3. 调用大纲链...\n" + "="*20)
         outliner_chain = create_outliner_chain()
         outliner_input = {
             "plan": plan_result, 
@@ -239,26 +241,26 @@ if __name__ == '__main__':
             "research_results": research_result
         }
         outline_result = outliner_chain.invoke(outliner_input)
-        print(outline_result)
+        logger.info(outline_result)
 
         # --- 模拟RAG流程：先索引一些内容 ---
         from vector_store_manager import index_text, reset_collection
         test_collection_name = "test_project"
-        print(f"\n--- 准备RAG测试 (重置集合: {test_collection_name}) ---")
+        logger.info(f"\n--- 准备RAG测试 (重置集合: {test_collection_name}) ---")
         reset_collection(test_collection_name)
-        print("--- 正在索引'世界观'和'大纲' ---")
+        logger.info("--- 正在索引'世界观'和'大纲' ---")
         index_text(test_collection_name, "世界观: 主角是一个AI侦探。", metadata={"source": "world_bible"})
         index_text(test_collection_name, outline_result, metadata={"source": "outline"})
         
         # --- 4. 撰写 (RAG增强) ---
-        print("\n" + "="*20 + "\n4. 调用RAG撰写链 (测试引言部分)...\n" + "="*20)
+        logger.info("\n" + "="*20 + "\n4. 调用RAG撰写链 (测试引言部分)...\n" + "="*20)
         
         try:
             introduction_section_for_writing = outline_result.split("第一部分")[0]
         except Exception:
             introduction_section_for_writing = "\n".join(outline_result.splitlines()[:4])
 
-        print(f"--- 将为以下章节撰写内容 ---\n{introduction_section_for_writing}\n--------------------------")
+        logger.info(f"--- 将为以下章节撰写内容 ---\n{introduction_section_for_writing}\n--------------------------")
 
         drafter_chain = create_drafter_chain(collection_name=test_collection_name)
         drafter_input = {
@@ -268,12 +270,12 @@ if __name__ == '__main__':
             "section_to_write": introduction_section_for_writing
         }
         draft_result = drafter_chain.invoke(drafter_input)
-        print("\n--- 撰写链输出 (初稿部分) ---")
-        print(draft_result)
-        print("="*20)
+        logger.info("\n--- 撰写链输出 (初稿部分) ---")
+        logger.info(draft_result)
+        logger.info("="*20)
 
         # --- 5. 修订 (RAG增强) ---
-        print("\n" + "="*20 + "\n5. 调用RAG修订链...\n" + "="*20)
+        logger.info("\n" + "="*20 + "\n5. 调用RAG修订链...\n" + "="*20)
         reviser_chain = create_reviser_chain(collection_name=test_collection_name)
         reviser_input = {
             "plan": plan_result,
@@ -281,10 +283,10 @@ if __name__ == '__main__':
             "full_draft": draft_result 
         }
         final_result = reviser_chain.invoke(reviser_input)
-        print("\n--- 修订链输出 (最终稿部分) ---")
-        print(final_result)
-        print("="*20)
+        logger.info("\n--- 修订链输出 (最终稿部分) ---")
+        logger.info(final_result)
+        logger.info("="*20)
 
     except Exception as e:
-        print(f"测试过程中发生错误: {e}")
+        logger.error(f"测试过程中发生错误: {e}", exc_info=True)
 

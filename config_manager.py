@@ -1,6 +1,9 @@
 import yaml
 import os
 import re
+import logging # 导入 logging 模块
+
+logger = logging.getLogger(__name__) # 获取当前模块的logger
 
 CONFIG_PATH = "config.yaml"
 USER_CONFIG_PATH = "user_config.yaml"
@@ -59,6 +62,7 @@ def load_user_config() -> dict:
             user_config = yaml.safe_load(f)
         return user_config if user_config else {}
     except yaml.YAMLError as e:
+        logger.error(f"解析 {USER_CONFIG_PATH} 文件失败: {e}", exc_info=True)
         raise ValueError(f"错误: 解析 {USER_CONFIG_PATH} 文件失败: {e}")
 
 def load_config() -> dict:
@@ -76,8 +80,10 @@ def load_config() -> dict:
         
         return merged_config
     except FileNotFoundError:
+        logger.warning(f"配置文件 {CONFIG_PATH} 未找到，返回默认空配置。")
         return {"models": {}, "steps": {}}
     except yaml.YAMLError as e:
+        logger.error(f"解析 {CONFIG_PATH} 文件失败: {e}", exc_info=True)
         raise ValueError(f"错误: 解析 {CONFIG_PATH} 文件失败: {e}")
 
 def load_provider_templates() -> dict:
@@ -86,13 +92,13 @@ def load_provider_templates() -> dict:
     """
     try:
         if not os.path.exists(PROVIDER_TEMPLATES_PATH):
+            logger.warning(f"提供商模板文件 {PROVIDER_TEMPLATES_PATH} 未找到，返回空模板。")
             return {}
         with open(PROVIDER_TEMPLATES_PATH, "r", encoding="utf-8") as f:
             templates = yaml.safe_load(f)
         return templates if templates else {}
-    except FileNotFoundError:
-        return {}
     except yaml.YAMLError as e:
+        logger.error(f"解析 {PROVIDER_TEMPLATES_PATH} 文件失败: {e}", exc_info=True)
         raise ValueError(f"错误: 解析 {PROVIDER_TEMPLATES_PATH} 文件失败: {e}")
 
 def get_all_model_templates() -> dict:
@@ -124,7 +130,9 @@ def save_user_config(user_config_data: dict):
         os.makedirs(os.path.dirname(USER_CONFIG_PATH) or '.', exist_ok=True)
         with open(USER_CONFIG_PATH, "w", encoding="utf-8") as f:
             yaml.dump(user_config_data, f, allow_unicode=True, sort_keys=False)
+        logger.info(f"用户配置已成功保存到 {USER_CONFIG_PATH}。")
     except Exception as e:
+        logger.error(f"写入 {USER_CONFIG_PATH} 文件失败: {e}", exc_info=True)
         raise IOError(f"错误: 写入 {USER_CONFIG_PATH} 文件失败: {e}")
 
 def save_config(config_data: dict):
@@ -136,7 +144,9 @@ def save_config(config_data: dict):
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
+        logger.info(f"配置已成功保存到 {CONFIG_PATH}。")
     except Exception as e:
+        logger.error(f"写入 {CONFIG_PATH} 文件失败: {e}", exc_info=True)
         raise IOError(f"错误: 写入 {CONFIG_PATH} 文件失败: {e}")
 
 # --- Test function ---
@@ -144,26 +154,27 @@ if __name__ == '__main__':
     # 清理旧的 user_config.yaml 以便测试
     if os.path.exists(USER_CONFIG_PATH):
         os.remove(USER_CONFIG_PATH)
+        logger.info(f"已清理旧的 {USER_CONFIG_PATH}。")
     
-    print("--- 初始加载配置 (user_config.yaml 不存在时) ---")
+    logger.info("--- 初始加载配置 (user_config.yaml 不存在时) ---")
     current_config = load_config()
-    print("加载的配置:")
-    print(yaml.dump(current_config, allow_unicode=True, sort_keys=False))
+    logger.info("加载的配置:")
+    logger.info(yaml.dump(current_config, allow_unicode=True, sort_keys=False))
 
     # 测试 get_all_model_templates
-    print("\n--- 获取所有模型模板 ---")
+    logger.info("\n--- 获取所有模型模板 ---")
     model_templates = get_all_model_templates()
-    print(yaml.dump(model_templates, allow_unicode=True, sort_keys=False))
+    logger.info(yaml.dump(model_templates, allow_unicode=True, sort_keys=False))
     assert 'openai' in model_templates and 'ollama' in model_templates
 
     # 测试 get_all_embedding_templates
-    print("\n--- 获取所有嵌入模型模板 ---")
+    logger.info("\n--- 获取所有嵌入模型模板 ---")
     embedding_templates = get_all_embedding_templates()
-    print(yaml.dump(embedding_templates, allow_unicode=True, sort_keys=False))
+    logger.info(yaml.dump(embedding_templates, allow_unicode=True, sort_keys=False))
     assert 'openai' in embedding_templates and 'ollama' in embedding_templates
 
     # 模拟用户添加模型
-    print("\n--- 模拟用户添加一个新模型和修改 steps ---")
+    logger.info("\n--- 模拟用户添加一个新模型和修改 steps ---")
     user_data_to_save = {
         "models": {
             "my_new_model": {
@@ -196,12 +207,12 @@ if __name__ == '__main__':
         "active_re_ranker_id": "my_reranker"
     }
     save_user_config(user_data_to_save)
-    print("--- 用户配置已保存 ---")
+    logger.info("--- 用户配置已保存 ---")
 
-    print("\n--- 重新加载配置 (包含用户配置) ---")
+    logger.info("\n--- 重新加载配置 (包含用户配置) ---")
     merged_config = load_config()
-    print("合并后的配置:")
-    print(yaml.dump(merged_config, allow_unicode=True, sort_keys=False))
+    logger.info("合并后的配置:")
+    logger.info(yaml.dump(merged_config, allow_unicode=True, sort_keys=False))
 
     # 验证合并结果
     assert "my_new_model" in merged_config["models"]
@@ -211,4 +222,4 @@ if __name__ == '__main__':
     assert "academic_report" in merged_config["writing_styles"] # 验证 writing_styles 是否合并成功
     assert "my_reranker" in merged_config["re_rankers"]
     assert merged_config["active_re_ranker_id"] == "my_reranker"
-    print("\n--- 配置合并验证成功！---")
+    logger.info("\n--- 配置合并验证成功！---")

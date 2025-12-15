@@ -11,6 +11,7 @@ import workflow_manager
 import re_ranker_provider
 from tools import check_ollama_model_availability
 import logger_config # 导入日志配置模块
+from custom_exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError
 
 # --- 在应用的最开始加载环境变量 ---
 load_environment()
@@ -51,9 +52,16 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             result = workflow_manager.run_step(step_name, st.session_state, full_config, project_writing_style_description)
             st.success(f"步骤 '{step_name}' 已完成！")
             return result
+        except (LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError) as e:
+            # 捕获我们自定义的、带有用户友好信息的异常
+            st.error(str(e)) # 直接显示异常中包含的友好信息
+            # 日志中仍然记录完整的堆栈信息
+            app_logger.error(f"执行步骤 '{step_name}' 时发生已知错误: {e}", exc_info=True)
+            return None
         except Exception as e:
-            st.error(f"执行步骤 '{step_name}' 时发生错误: {e}")
-            app_logger.error(f"执行步骤 '{step_name}' 时发生错误: {e}", exc_info=True) # 使用 logger.error 记录异常和堆栈跟踪
+            # 捕获所有其他未知异常
+            st.error(f"执行步骤 '{step_name}' 时发生未知错误，请检查日志或联系管理员。")
+            app_logger.error(f"执行步骤 '{step_name}' 时发生未知错误: {e}", exc_info=True)
             return None
 
 # ==================================================================

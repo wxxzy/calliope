@@ -1,13 +1,25 @@
 import yaml
 import os
+import sys
 import re
-import logging # 导入 logging 模块
+import logging
 
-logger = logging.getLogger(__name__) # 获取当前模块的logger
+logger = logging.getLogger(__name__)
 
-CONFIG_PATH = "config.yaml"
-USER_CONFIG_PATH = "user_config.yaml"
-PROVIDER_TEMPLATES_PATH = "provider_templates.yaml"
+def get_resource_path(relative_path: str) -> str:
+    """
+    获取资源的正确路径
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+CONFIG_PATH = get_resource_path("config.yaml")
+USER_CONFIG_PATH = get_resource_path("user_config.yaml")
+PROVIDER_TEMPLATES_PATH = get_resource_path("provider_templates.yaml")
 
 def _merge_configs(base_config: dict, user_config: dict) -> dict:
     """

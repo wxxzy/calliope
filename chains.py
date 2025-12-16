@@ -223,7 +223,7 @@ if __name__ == '__main__':
         
         # 首先，获取一个工具实例
         from tool_provider import get_tool
-        search_tool = get_tool("tavily_default") # 使用默认的tavily工具
+        search_tool = get_tool("ddg_default") # 默认的搜索工具
         
         # 然后，将工具实例传递给研究链
         research_chain = create_research_chain(search_tool=search_tool) 

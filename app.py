@@ -20,7 +20,7 @@ logger_config.setup_logging()
 app_logger = logging.getLogger(__name__) # 获取当前模块的logger
 
 # --- 页面配置 ---
-st.set_page_config(page_title="AI 长篇写作智能体", page_icon="📚", layout="wide")
+st.set_page_config(page_title="写作", page_icon="📚", layout="wide")
 
 # --- Helper Functions ---
 def sanitize_project_name(name: str) -> str:
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     # --- 侧边栏 UI ---
     with st.sidebar:
-        st.title("📚 AI 长篇写作智能体")
+        st.title("📚 写作智能体")
         
         # --- 项目管理 ---
         st.header("📝 写作项目管理")

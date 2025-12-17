@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import json
 import re
 import logging # 导入 logging 模块
 from config import load_environment
@@ -9,6 +10,7 @@ import text_splitter_provider
 import vector_store_manager
 import workflow_manager
 import re_ranker_provider
+import state_manager
 from tools import check_ollama_model_availability
 import logger_config # 导入日志配置模块
 from custom_exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError
@@ -72,6 +74,9 @@ if __name__ == "__main__":
     # 加载合并后的配置，使其在整个脚本范围内可用
     full_config = config_manager.load_config()
 
+    # --- 初始化后台模块 ---
+    state_manager.initialize_state_directory()
+
     # --- 侧边栏 UI ---
     with st.sidebar:
         st.title("📚 写作智能体")
@@ -106,9 +111,17 @@ if __name__ == "__main__":
                     st.error("请输入项目名称！")
         elif selected_option != "--- 选择一个项目 ---" and st.session_state.get('collection_name') != selected_option:
             st.session_state.collection_name = selected_option
-            st.session_state.project_name = selected_option
-            reset_project_state()
+            st.session_state.project_name = selected_option # project_name 初始也设置为 collection_name
+            # 尝试从文件加载项目状态
+            if not state_manager.load_project_state_from_file(st.session_state.collection_name):
+                # 如果没有加载成功（文件不存在或加载失败），则重置为初始状态
+                reset_project_state()
             st.rerun()
+        
+        # 保存项目按钮
+        if st.session_state.get('project_name'): # 仅当项目已加载时显示
+            if st.button("💾 保存当前项目进度", key="save_project_button"):
+                state_manager.save_project_state_to_file(st.session_state.collection_name)
         
         st.markdown("---")
         # ... (其他配置UI保持不变，此处省略以保持简洁) ...

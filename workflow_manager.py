@@ -171,8 +171,16 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
     except Exception as e:
         # 捕获所有其他未知异常
         workflow_logger.error(f"步骤 '{step_name}' 发生未知错误: {e}", exc_info=True)
+        
+        error_str = str(e).lower()
+        # 专门处理流式输出中断的错误
+        if "invalid chunk" in error_str or "missing finish reason" in error_str:
+            raise LLMOperationError(f"模型输出流异常中断: {e}。这通常是临时网络问题或模型提供方服务不稳定所致，直接重试通常可以解决。")
+
         # 特别处理工具调用相关的错误
         if step_name == "research":
              raise ToolOperationError(f"执行“研究”步骤时发生未知错误: {e}。请检查工具配置和网络连接。")
+        
+        # 其他所有未知错误
         raise LLMOperationError(f"执行 '{step_name}' 步骤时发生未知错误: {e}")
 

@@ -25,8 +25,8 @@
 
 如果您从代码仓库获取此项目，请先克隆它：
 ```bash
-# git clone <repository_url>
-# cd <project_directory>
+# git clone https://github.com/wxxzy/calliope.git
+# cd calliope
 ```
 
 ### 2. 创建并激活虚拟环境 (推荐)

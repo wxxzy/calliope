@@ -211,68 +211,140 @@ if __name__ == "__main__":
             st.expander("文章大纲").markdown(st.session_state.outline)
             with st.container(border=True):
                 st.subheader("第四步：撰写 (RAG增强)")
+
+                # 初始化或重置撰写状态
                 if st.button("准备撰写 (解析大纲)"):
                     st.session_state.outline_sections = [s.strip() for s in st.session_state.outline.split('\n- ') if s.strip()]
                     st.session_state.drafts = []
                     st.session_state.drafting_index = 0
-                
-                if 'outline_sections' in st.session_state:
+                    # 清理所有与上下文审核相关的旧状态，确保重新开始
+                    keys_to_clear = [
+                        'draft_context_review_mode', 'draft_retrieved_docs', 'draft_selected_docs_mask',
+                        'revise_context_review_mode', 'revise_retrieved_docs', 'revise_selected_docs_mask',
+                        'user_selected_docs', 'retrieved_docs'
+                    ]
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+
+                # 如果进入了上下文审核模式
+                if st.session_state.get('draft_context_review_mode'):
+                    st.info("请审核以下检索到的记忆片段，并勾选您希望AI在本次生成中参考的内容。")
+                    
+                    docs_to_review = st.session_state.get('draft_retrieved_docs', [])
+                    selected_mask = st.session_state.get('draft_selected_docs_mask', {})
+
+                    for i, doc in enumerate(docs_to_review):
+                        is_selected = st.checkbox(f"**参考片段 {i+1}**", value=selected_mask.get(i, False), key=f"draft_doc_{i}")
+                        if is_selected:
+                            st.markdown(f"> {doc.replace('\n', '\n> ')}")
+                        selected_mask[i] = is_selected
+                    
+                    st.session_state.draft_selected_docs_mask = selected_mask
+
+                    if st.button("✅ 使用选中的记忆生成", type="primary"):
+                        # 收集用户选中的文档
+                        st.session_state['user_selected_docs'] = [docs_to_review[i] for i, selected in selected_mask.items() if selected]
+                        
+                        # 调用生成步骤
+                        result = run_step_with_spinner("generate_draft", "正在调用“写手”生成内容...", full_config)
+                        
+                        # 处理生成结果
+                        if result and "new_draft_content" in result:
+                            drafts = st.session_state.get('drafts', [])
+                            drafts.append(result["new_draft_content"])
+                            st.session_state.drafts = drafts
+                            st.session_state.drafting_index += 1
+                        
+                        # 清理审核状态并刷新
+                        del st.session_state['draft_context_review_mode']
+                        del st.session_state['draft_retrieved_docs']
+                        del st.session_state['draft_selected_docs_mask']
+                        st.rerun()
+
+                # 正常撰写流程
+                elif 'outline_sections' in st.session_state:
                     total = len(st.session_state.outline_sections)
                     current = st.session_state.get('drafting_index', 0)
-                    if current < total:
-                        st.info(f"下一章节待撰写: {st.session_state.outline_sections[current].splitlines()[0]}")
-                        if st.button(f"撰写章节 {current + 1}/{total}", type="primary"):
-                            # 清除上一轮的检索结果
-                            if 'retrieved_docs' in st.session_state:
-                                del st.session_state['retrieved_docs']
 
+                    if current < total:
+                        st.info(f"下一章节待撰写: **{st.session_state.outline_sections[current].splitlines()[0]}**")
+                        if st.button(f"撰写章节 {current + 1}/{total}", type="primary"):
                             st.session_state.section_to_write = st.session_state.outline_sections[current]
-                            result = run_step_with_spinner("draft", "正在检索记忆并调用“写手”...", full_config)
                             
-                            if result and "new_draft_content" in result:
-                                st.session_state.update(result) # 将返回的整个字典（包含retrieved_docs）更新到会话状态
-                                drafts = st.session_state.get('drafts', [])
-                                drafts.append(result["new_draft_content"])
-                                st.session_state.drafts = drafts
-                                st.session_state.drafting_index += 1
+                            # 第一步：只检索，不生成
+                            retrieval_result = run_step_with_spinner("retrieve_for_draft", "正在检索相关记忆...", full_config)
+                            
+                            if retrieval_result and "retrieved_docs" in retrieval_result:
+                                # 进入审核模式
+                                st.session_state.draft_context_review_mode = True
+                                st.session_state.draft_retrieved_docs = retrieval_result['retrieved_docs']
+                                # 默认全选
+                                st.session_state.draft_selected_docs_mask = {i: True for i in range(len(retrieval_result['retrieved_docs']))}
                                 st.rerun()
                     else:
                         st.success("所有章节已撰写完毕！")
 
+                # 显示已完成的草稿
                 if st.session_state.get('drafts'):
                     st.expander("完整初稿").markdown("\n\n".join(st.session_state.drafts))
 
-                if 'retrieved_docs' in st.session_state and st.session_state.retrieved_docs:
-                    with st.expander("🔍 上一章节生成时参考的记忆片段"):
-                        for i, doc in enumerate(st.session_state.retrieved_docs):
-                            st.markdown(f"**片段 {i+1}:**")
-                            st.markdown(f"> {doc.replace('\n', '\n> ')}")
-                            st.markdown("---")
-
+        # 当所有章节撰写完毕后，显示修订步骤
         if st.session_state.get("drafting_index", 0) > 0 and st.session_state.get("drafting_index") == len(st.session_state.get("outline_sections", [])):
             with st.container(border=True):
                 st.subheader("第五步：修订 (RAG增强)")
-                if st.button("开始修订全文", type="primary"):
-                    # 清除上一轮的检索结果
-                    if 'retrieved_docs' in st.session_state:
-                        del st.session_state['retrieved_docs']
-                        
-                    st.session_state.full_draft = "\n\n".join(st.session_state.drafts)
-                    result = run_step_with_spinner("revise", "“总编辑”正在检索记忆并审阅全文...", full_config)
-                    if result: st.session_state.update(result)
 
+                # 如果进入了修订的上下文审核模式
+                if st.session_state.get('revise_context_review_mode'):
+                    st.info("请审核以下为全文修订检索到的记忆片段，并勾选您希望AI在本次生成中参考的内容。")
+                    
+                    docs_to_review = st.session_state.get('revise_retrieved_docs', [])
+                    selected_mask = st.session_state.get('revise_selected_docs_mask', {})
+
+                    for i, doc in enumerate(docs_to_review):
+                        is_selected = st.checkbox(f"**参考片段 {i+1}**", value=selected_mask.get(i, False), key=f"revise_doc_{i}")
+                        if is_selected:
+                            st.markdown(f"> {doc.replace('\n', '\n> ')}")
+                        selected_mask[i] = is_selected
+                    
+                    st.session_state.revise_selected_docs_mask = selected_mask
+
+                    if st.button("✅ 使用选中的记忆生成最终稿", type="primary"):
+                        st.session_state['user_selected_docs'] = [docs_to_review[i] for i, selected in selected_mask.items() if selected]
+                        
+                        result = run_step_with_spinner("generate_revision", "“总编辑”正在生成最终稿件...", full_config)
+                        
+                        if result:
+                            st.session_state.update(result)
+                        
+                        # 清理审核状态
+                        del st.session_state['revise_context_review_mode']
+                        del st.session_state['revise_retrieved_docs']
+                        del st.session_state['revise_selected_docs_mask']
+                        st.rerun()
+
+                # 正常修订流程（未进入审核模式）
+                elif 'final_manuscript' not in st.session_state:
+                    if st.button("开始修订全文", type="primary"):
+                        st.session_state.full_draft = "\n\n".join(st.session_state.drafts)
+                        
+                        # 第一步：只检索
+                        retrieval_result = run_step_with_spinner("retrieve_for_revise", "正在为全文修订检索相关记忆...", full_config)
+
+                        if retrieval_result and "retrieved_docs" in retrieval_result:
+                            # 进入审核模式
+                            st.session_state.revise_context_review_mode = True
+                            st.session_state.revise_retrieved_docs = retrieval_result['retrieved_docs']
+                            st.session_state.revise_selected_docs_mask = {i: True for i in range(len(retrieval_result['retrieved_docs']))}
+                            st.rerun()
+
+        # 显示最终成品
         if 'final_manuscript' in st.session_state:
             with st.container(border=True):
                 st.header("🎉 最终成品")
                 st.markdown(st.session_state.final_manuscript)
                 st.download_button("下载最终稿件", st.session_state.final_manuscript, file_name=f"{st.session_state.collection_name}_final.md")
-
-                if 'retrieved_docs' in st.session_state and st.session_state.retrieved_docs:
-                    with st.expander("🔍 全文修订时参考的记忆片段"):
-                        for i, doc in enumerate(st.session_state.retrieved_docs):
-                            st.markdown(f"**片段 {i+1}:**")
-                            st.markdown(f"> {doc.replace('\n', '\n> ')}")
-                            st.markdown("---")
 
 
     with tab2:

@@ -4,7 +4,11 @@
 将UI逻辑与业务逻辑分离的核心。
 它根据应用的当前状态，决定并执行下一步的操作。
 """
-from chains import create_planner_chain, create_research_chain, create_outliner_chain, create_drafter_chain, create_reviser_chain
+from chains import (
+    create_planner_chain, create_research_chain, create_outliner_chain,
+    retrieve_documents_for_drafting, create_draft_generation_chain,
+    retrieve_documents_for_revising, create_revise_generation_chain
+)
 import tool_provider
 import text_splitter_provider
 import vector_store_manager
@@ -104,47 +108,60 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             workflow_logger.info(f"步骤 'outline' 完成，生成大纲。")
             return {"outline": outline}
 
-        elif step_name == "draft":
+        elif step_name == "retrieve_for_draft":
+            retrieved_docs = retrieve_documents_for_drafting(
+                collection_name=collection_name,
+                section_to_write=state.get("section_to_write"),
+                re_ranker=reranker_instance
+            )
+            workflow_logger.info(f"步骤 'retrieve_for_draft' 完成，检索到 {len(retrieved_docs)} 个文档。")
+            return {"retrieved_docs": retrieved_docs}
+
+        elif step_name == "generate_draft":
             active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
             text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id)
             
-            drafter_chain = create_drafter_chain(collection_name, writing_style=writing_style_description, re_ranker=reranker_instance)
-            drafter_input = {
+            generation_chain = create_draft_generation_chain(writing_style=writing_style_description)
+            generation_input = {
                 "user_prompt": state.get("user_prompt"),
                 "research_results": state.get("research_results"),
                 "outline": state.get("outline"),
-                "section_to_write": state.get("section_to_write")
+                "section_to_write": state.get("section_to_write"),
+                "user_selected_docs": state.get("user_selected_docs", []) # 从UI获取用户筛选后的文档
             }
-            # drafter_chain现在返回一个字典
-            draft_result = drafter_chain.invoke(drafter_input)
-            draft_content = draft_result.get("new_draft_content")
-
-            if draft_content:
+            new_draft_content = generation_chain.invoke(generation_input)
+            
+            if new_draft_content:
                 try:
-                    vector_store_manager.index_text(collection_name, draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
-                    workflow_logger.info(f"草稿内容已成功索引到集合 '{collection_name}'，章节 {state.get('drafting_index', 0) + 1}")
+                    vector_store_manager.index_text(collection_name, new_draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
+                    workflow_logger.info(f"新草稿章节已成功索引。")
                 except Exception as e:
-                    workflow_logger.error(f"步骤 'draft' 中索引草稿内容时发生向量数据库错误: {e}", exc_info=True)
+                    workflow_logger.error(f"步骤 'generate_draft' 中索引草稿内容时发生向量数据库错误: {e}", exc_info=True)
                     raise VectorStoreOperationError(f"无法将新章节存入记忆库: {e}")
-            else:
-                workflow_logger.info("草稿内容为空，跳过索引。")
             
-            workflow_logger.info(f"步骤 'draft' 完成，生成草稿章节。")
-            # 返回完整的字典，包含 'new_draft_content' 和 'retrieved_docs'
-            return draft_result
-            
-        elif step_name == "revise":
-            reviser_chain = create_reviser_chain(collection_name, writing_style=writing_style_description, re_ranker=reranker_instance)
-            reviser_input = {
+            workflow_logger.info(f"步骤 'generate_draft' 完成。")
+            return {"new_draft_content": new_draft_content}
+
+        elif step_name == "retrieve_for_revise":
+            retrieved_docs = retrieve_documents_for_revising(
+                collection_name=collection_name,
+                full_draft=state.get("full_draft"),
+                re_ranker=reranker_instance
+            )
+            workflow_logger.info(f"步骤 'retrieve_for_revise' 完成，检索到 {len(retrieved_docs)} 个文档。")
+            return {"retrieved_docs": retrieved_docs}
+
+        elif step_name == "generate_revision":
+            generation_chain = create_revise_generation_chain(writing_style=writing_style_description)
+            generation_input = {
                 "plan": state.get("plan"),
                 "outline": state.get("outline"),
-                "full_draft": state.get("full_draft")
+                "full_draft": state.get("full_draft"),
+                "user_selected_docs": state.get("user_selected_docs", [])
             }
-            # reviser_chain现在返回一个字典
-            revise_result = reviser_chain.invoke(reviser_input)
-            workflow_logger.info(f"步骤 'revise' 完成，生成最终稿件。")
-            # 返回完整的字典，包含 'final_manuscript' 和 'retrieved_docs'
-            return revise_result
+            final_manuscript = generation_chain.invoke(generation_input)
+            workflow_logger.info(f"步骤 'generate_revision' 完成。")
+            return {"final_manuscript": final_manuscript}
             
         else:
             workflow_logger.error(f"发现未知步骤名称: {step_name}")

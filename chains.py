@@ -123,80 +123,71 @@ def create_outliner_chain(writing_style: str = ""):
     return outliner_chain
 
 
-def create_drafter_chain(collection_name: str, writing_style: str = "", re_ranker=None):
+# RAG 流程已拆分为独立的检索和生成函数
+
+def retrieve_documents_for_drafting(collection_name: str, section_to_write: str, re_ranker=None) -> list[str]:
     """
-    创建“撰写”步骤的链，返回包含生成内容和源文档的字典。
+    为“撰写”步骤从向量数据库检索文档。
+    """
+    logger.info(f"为撰写章节 '{section_to_write[:50]}...' 检索文档...")
+    return retrieve_context(
+        collection_name=collection_name,
+        query=section_to_write,
+        n_results=10,
+        re_ranker=re_ranker,
+        re_ranker_top_n=3
+    )
+
+def create_draft_generation_chain(writing_style: str = ""):
+    """
+    创建根据用户选择的上下文生成草稿的链。
+    输入字典需要包含 'user_selected_docs' 键。
     """
     drafter_llm = get_llm("drafter")
     writing_style_instruction = _get_writing_style_instruction(writing_style)
 
-    # 1. 定义检索步骤
-    context_retriever_chain = RunnablePassthrough.assign(
-        retrieved_docs=lambda inputs: retrieve_context(
-            collection_name=collection_name,
-            query=inputs.get("section_to_write", ""),
-            n_results=10,
-            re_ranker=re_ranker,
-            re_ranker_top_n=3
-        )
-    )
-
-    # 2. 定义LLM生成步骤
-    llm_generation_chain = (
+    generation_chain = (
         RunnablePassthrough.assign(
-            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("retrieved_docs", []))
+            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("user_selected_docs", []))
         )
         | RunnablePassthrough.assign(writing_style_instruction=lambda x: writing_style_instruction)
         | DRAFTER_PROMPT
         | drafter_llm
         | StrOutputParser()
     )
+    return generation_chain
 
-    # 3. 组合链，并定义最终输出结构
-    final_chain = context_retriever_chain | {
-        "new_draft_content": llm_generation_chain,
-        "retrieved_docs": lambda x: x["retrieved_docs"]
-    }
-    
-    return final_chain
-
-
-def create_reviser_chain(collection_name: str, writing_style: str = "", re_ranker=None):
+def retrieve_documents_for_revising(collection_name: str, full_draft: str, re_ranker=None) -> list[str]:
     """
-    创建“修订”步骤的链，返回包含生成内容和源文档的字典。
+    为“修订”步骤从向量数据库检索文档。
+    """
+    logger.info("为修订全文检索文档...")
+    return retrieve_context(
+        collection_name=collection_name,
+        query=full_draft[:2000],
+        n_results=15,
+        re_ranker=re_ranker,
+        re_ranker_top_n=5
+    )
+
+def create_revise_generation_chain(writing_style: str = ""):
+    """
+    创建根据用户选择的上下文修订全文的链。
+    输入字典需要包含 'user_selected_docs' 键。
     """
     reviser_llm = get_llm("reviser", temperature=0.5)
     writing_style_instruction = _get_writing_style_instruction(writing_style)
 
-    # 1. 定义检索步骤
-    context_retriever_chain = RunnablePassthrough.assign(
-        retrieved_docs=lambda inputs: retrieve_context(
-            collection_name=collection_name,
-            query=inputs.get("full_draft", "")[:2000],
-            n_results=15,
-            re_ranker=re_ranker,
-            re_ranker_top_n=5
-        )
-    )
-    
-    # 2. 定义LLM生成步骤
-    llm_generation_chain = (
+    generation_chain = (
         RunnablePassthrough.assign(
-            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("retrieved_docs", []))
+            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("user_selected_docs", []))
         )
         | RunnablePassthrough.assign(writing_style_instruction=lambda x: writing_style_instruction)
         | REVISER_PROMPT
         | reviser_llm
         | StrOutputParser()
     )
-
-    # 3. 组合链，并定义最终输出结构
-    final_chain = context_retriever_chain | {
-        "final_manuscript": llm_generation_chain,
-        "retrieved_docs": lambda x: x["retrieved_docs"]
-    }
-    
-    return final_chain
+    return generation_chain
 
 
 # --- Test function ---
@@ -247,7 +238,7 @@ if __name__ == '__main__':
         index_text(test_collection_name, outline_result, metadata={"source": "outline"})
         
         # --- 4. 撰写 (RAG增强) ---
-        logger.info("\n" + "="*20 + "\n4. 调用RAG撰写链 (测试引言部分)...\n" + "="*20)
+        logger.info("\n" + "="*20 + "\n4. 调用拆分后的RAG撰写流程 (测试引言部分)...\n" + "="*20)
         
         try:
             introduction_section_for_writing = outline_result.split("第一部分")[0]
@@ -255,28 +246,45 @@ if __name__ == '__main__':
             introduction_section_for_writing = "\n".join(outline_result.splitlines()[:4])
 
         logger.info(f"--- 将为以下章节撰写内容 ---\n{introduction_section_for_writing}\n--------------------------")
+        
+        # 步骤 4.1: 检索
+        retrieved_for_draft = retrieve_documents_for_drafting(test_collection_name, introduction_section_for_writing)
+        logger.info(f"--- 检索到 {len(retrieved_for_draft)} 篇文档 ---")
+        # 假设用户审核并全选了所有文档
+        user_selected_for_draft = retrieved_for_draft
 
-        drafter_chain = create_drafter_chain(collection_name=test_collection_name)
+        # 步骤 4.2: 生成
+        draft_generation_chain = create_draft_generation_chain()
         drafter_input = {
             "user_prompt": test_user_prompt,
             "research_results": research_result,
             "outline": outline_result,
-            "section_to_write": introduction_section_for_writing
+            "section_to_write": introduction_section_for_writing,
+            "user_selected_docs": user_selected_for_draft
         }
-        draft_result = drafter_chain.invoke(drafter_input)
+        draft_result = draft_generation_chain.invoke(drafter_input)
         logger.info("\n--- 撰写链输出 (初稿部分) ---")
         logger.info(draft_result)
         logger.info("="*20)
 
         # --- 5. 修订 (RAG增强) ---
-        logger.info("\n" + "="*20 + "\n5. 调用RAG修订链...\n" + "="*20)
-        reviser_chain = create_reviser_chain(collection_name=test_collection_name)
+        logger.info("\n" + "="*20 + "\n5. 调用拆分后的RAG修订流程...\n" + "="*20)
+        
+        # 步骤 5.1: 检索
+        retrieved_for_revise = retrieve_documents_for_revising(test_collection_name, draft_result)
+        logger.info(f"--- 检索到 {len(retrieved_for_revise)} 篇文档 ---")
+        # 假设用户审核并全选了所有文档
+        user_selected_for_revise = retrieved_for_revise
+
+        # 步骤 5.2: 生成
+        revise_generation_chain = create_revise_generation_chain()
         reviser_input = {
             "plan": plan_result,
             "outline": outline_result,
-            "full_draft": draft_result 
+            "full_draft": draft_result,
+            "user_selected_docs": user_selected_for_revise
         }
-        final_result = reviser_chain.invoke(reviser_input)
+        final_result = revise_generation_chain.invoke(reviser_input)
         logger.info("\n--- 修订链输出 (最终稿部分) ---")
         logger.info(final_result)
         logger.info("="*20)

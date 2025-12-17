@@ -222,9 +222,15 @@ if __name__ == "__main__":
                     if current < total:
                         st.info(f"下一章节待撰写: {st.session_state.outline_sections[current].splitlines()[0]}")
                         if st.button(f"撰写章节 {current + 1}/{total}", type="primary"):
+                            # 清除上一轮的检索结果
+                            if 'retrieved_docs' in st.session_state:
+                                del st.session_state['retrieved_docs']
+
                             st.session_state.section_to_write = st.session_state.outline_sections[current]
                             result = run_step_with_spinner("draft", "正在检索记忆并调用“写手”...", full_config)
+                            
                             if result and "new_draft_content" in result:
+                                st.session_state.update(result) # 将返回的整个字典（包含retrieved_docs）更新到会话状态
                                 drafts = st.session_state.get('drafts', [])
                                 drafts.append(result["new_draft_content"])
                                 st.session_state.drafts = drafts
@@ -236,10 +242,21 @@ if __name__ == "__main__":
                 if st.session_state.get('drafts'):
                     st.expander("完整初稿").markdown("\n\n".join(st.session_state.drafts))
 
+                if 'retrieved_docs' in st.session_state and st.session_state.retrieved_docs:
+                    with st.expander("🔍 上一章节生成时参考的记忆片段"):
+                        for i, doc in enumerate(st.session_state.retrieved_docs):
+                            st.markdown(f"**片段 {i+1}:**")
+                            st.markdown(f"> {doc.replace('\n', '\n> ')}")
+                            st.markdown("---")
+
         if st.session_state.get("drafting_index", 0) > 0 and st.session_state.get("drafting_index") == len(st.session_state.get("outline_sections", [])):
             with st.container(border=True):
                 st.subheader("第五步：修订 (RAG增强)")
                 if st.button("开始修订全文", type="primary"):
+                    # 清除上一轮的检索结果
+                    if 'retrieved_docs' in st.session_state:
+                        del st.session_state['retrieved_docs']
+                        
                     st.session_state.full_draft = "\n\n".join(st.session_state.drafts)
                     result = run_step_with_spinner("revise", "“总编辑”正在检索记忆并审阅全文...", full_config)
                     if result: st.session_state.update(result)
@@ -249,6 +266,13 @@ if __name__ == "__main__":
                 st.header("🎉 最终成品")
                 st.markdown(st.session_state.final_manuscript)
                 st.download_button("下载最终稿件", st.session_state.final_manuscript, file_name=f"{st.session_state.collection_name}_final.md")
+
+                if 'retrieved_docs' in st.session_state and st.session_state.retrieved_docs:
+                    with st.expander("🔍 全文修订时参考的记忆片段"):
+                        for i, doc in enumerate(st.session_state.retrieved_docs):
+                            st.markdown(f"**片段 {i+1}:**")
+                            st.markdown(f"> {doc.replace('\n', '\n> ')}")
+                            st.markdown("---")
 
 
     with tab2:

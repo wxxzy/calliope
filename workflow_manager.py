@@ -105,7 +105,6 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             return {"outline": outline}
 
         elif step_name == "draft":
-            # 从 full_config 获取 active_splitter_id
             active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
             text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id)
             
@@ -116,9 +115,10 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "outline": state.get("outline"),
                 "section_to_write": state.get("section_to_write")
             }
-            draft_content = drafter_chain.invoke(drafter_input)
-            
-            # 将新章节也加入记忆库
+            # drafter_chain现在返回一个字典
+            draft_result = drafter_chain.invoke(drafter_input)
+            draft_content = draft_result.get("new_draft_content")
+
             if draft_content:
                 try:
                     vector_store_manager.index_text(collection_name, draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
@@ -130,7 +130,8 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 workflow_logger.info("草稿内容为空，跳过索引。")
             
             workflow_logger.info(f"步骤 'draft' 完成，生成草稿章节。")
-            return {"new_draft_content": draft_content}
+            # 返回完整的字典，包含 'new_draft_content' 和 'retrieved_docs'
+            return draft_result
             
         elif step_name == "revise":
             reviser_chain = create_reviser_chain(collection_name, writing_style=writing_style_description, re_ranker=reranker_instance)
@@ -139,9 +140,11 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "outline": state.get("outline"),
                 "full_draft": state.get("full_draft")
             }
-            final_manuscript = reviser_chain.invoke(reviser_input)
+            # reviser_chain现在返回一个字典
+            revise_result = reviser_chain.invoke(reviser_input)
             workflow_logger.info(f"步骤 'revise' 完成，生成最终稿件。")
-            return {"final_manuscript": final_manuscript}
+            # 返回完整的字典，包含 'final_manuscript' 和 'retrieved_docs'
+            return revise_result
             
         else:
             workflow_logger.error(f"发现未知步骤名称: {step_name}")

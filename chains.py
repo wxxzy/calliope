@@ -125,84 +125,78 @@ def create_outliner_chain(writing_style: str = ""):
 
 def create_drafter_chain(collection_name: str, writing_style: str = "", re_ranker=None):
     """
-    创建并返回“撰写”步骤的链。
-    增加了RAG步骤：在撰写前先从向量数据库检索上下文。
+    创建“撰写”步骤的链，返回包含生成内容和源文档的字典。
     """
-    
-    def retrieve_and_format_context(inputs: dict) -> str:
-        """从向量数据库检索上下文并格式化为字符串。"""
-        retrieved_docs = retrieve_context(
+    drafter_llm = get_llm("drafter")
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+
+    # 1. 定义检索步骤
+    context_retriever_chain = RunnablePassthrough.assign(
+        retrieved_docs=lambda inputs: retrieve_context(
             collection_name=collection_name,
-            query=inputs["section_to_write"], # 使用要写的章节作为查询
-            n_results=10, # 初始检索更多文档，以便重排器筛选
+            query=inputs.get("section_to_write", ""),
+            n_results=10,
             re_ranker=re_ranker,
             re_ranker_top_n=3
         )
-        return "\n\n---\n\n".join(retrieved_docs)
+    )
 
-    drafter_llm = get_llm("drafter")
-    
-    writing_style_instruction = _get_writing_style_instruction(writing_style)
-
-    # RAG增强的撰写链
-    rag_drafter_chain = (
+    # 2. 定义LLM生成步骤
+    llm_generation_chain = (
         RunnablePassthrough.assign(
-            retrieved_context=retrieve_and_format_context
+            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("retrieved_docs", []))
         )
-        | RunnablePassthrough.assign(
-            user_prompt=RunnablePassthrough(),
-            research_results=RunnablePassthrough(),
-            outline=RunnablePassthrough(),
-            section_to_write=RunnablePassthrough(),
-            writing_style_instruction=lambda x: writing_style_instruction
-        )
+        | RunnablePassthrough.assign(writing_style_instruction=lambda x: writing_style_instruction)
         | DRAFTER_PROMPT
         | drafter_llm
         | StrOutputParser()
     )
-    
-    return rag_drafter_chain
 
+    # 3. 组合链，并定义最终输出结构
+    final_chain = context_retriever_chain | {
+        "new_draft_content": llm_generation_chain,
+        "retrieved_docs": lambda x: x["retrieved_docs"]
+    }
+    
+    return final_chain
 
 
 def create_reviser_chain(collection_name: str, writing_style: str = "", re_ranker=None):
     """
-    创建并返回“修订”步骤的链。
-    增加了RAG步骤：在修订前先检索最相关的上下文。
+    创建“修订”步骤的链，返回包含生成内容和源文档的字典。
     """
-    def retrieve_and_format_context_for_reviser(inputs: dict) -> str:
-        """为修订者检索上下文。可以使用整个草稿或其摘要作为查询。"""
-        # 为了效率，可以只用草稿的一部分或一个总结作为查询
-        query = inputs["full_draft"][:2000] # 使用初稿的前2000个字符作为查询
-        retrieved_docs = retrieve_context(
+    reviser_llm = get_llm("reviser", temperature=0.5)
+    writing_style_instruction = _get_writing_style_instruction(writing_style)
+
+    # 1. 定义检索步骤
+    context_retriever_chain = RunnablePassthrough.assign(
+        retrieved_docs=lambda inputs: retrieve_context(
             collection_name=collection_name,
-            query=query,
-            n_results=15, # 初始检索更多文档，以便重排器筛选
+            query=inputs.get("full_draft", "")[:2000],
+            n_results=15,
             re_ranker=re_ranker,
             re_ranker_top_n=5
         )
-        return "\n\n---\n\n".join(retrieved_docs)
-
-    reviser_llm = get_llm("reviser", temperature=0.5)
+    )
     
-    writing_style_instruction = _get_writing_style_instruction(writing_style)
-
-    rag_reviser_chain = (
+    # 2. 定义LLM生成步骤
+    llm_generation_chain = (
         RunnablePassthrough.assign(
-            retrieved_context=retrieve_and_format_context_for_reviser
+            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("retrieved_docs", []))
         )
-        | RunnablePassthrough.assign(
-            plan=RunnablePassthrough(),
-            outline=RunnablePassthrough(),
-            full_draft=RunnablePassthrough(),
-            writing_style_instruction=lambda x: writing_style_instruction
-        )
+        | RunnablePassthrough.assign(writing_style_instruction=lambda x: writing_style_instruction)
         | REVISER_PROMPT
         | reviser_llm
         | StrOutputParser()
     )
+
+    # 3. 组合链，并定义最终输出结构
+    final_chain = context_retriever_chain | {
+        "final_manuscript": llm_generation_chain,
+        "retrieved_docs": lambda x: x["retrieved_docs"]
+    }
     
-    return rag_reviser_chain
+    return final_chain
 
 
 # --- Test function ---

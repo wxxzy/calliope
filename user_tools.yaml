@@ -10,18 +10,18 @@
 #
 # 预置开箱即用的工具实例
 
+# DuckDuckGo 搜索工具实例 (无需API Key)
+ddg_default:
+  template: "ddg_search"
+  description: "DuckDuckGo搜索引擎，无需API密钥，方便快捷。"
+  max_results: 5
+
 # Tavily 搜索工具实例 (推荐)
 # 需要在 .env 文件中设置 TAVILY_API_KEY
 tavily_default:
   template: "tavily_search"
   description: "Tavily搜索引擎，一个为LLM优化的搜索引擎，结果质量高。"
   tavily_api_key_env: "TAVILY_API_KEY"
-  max_results: 5
-
-# DuckDuckGo 搜索工具实例 (无需API Key)
-ddg_default:
-  template: "ddg_search"
-  description: "DuckDuckGo搜索引擎，无需API密钥，方便快捷。"
   max_results: 5
 
 # Brave Search 工具实例 (需要API Key)

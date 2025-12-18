@@ -77,6 +77,23 @@ if __name__ == "__main__":
     # --- 初始化后台模块 ---
     state_manager.initialize_state_directory()
 
+    # --- 状态同步逻辑 (解决Streamlit控件渲染后无法更新状态的问题) ---
+    # 1. 同步后台计算出的新值
+    sync_keys = {
+        "new_plan": "plan",
+        "new_research_results": "research_results",
+        "new_outline": "outline"
+    }
+    for temp_key, main_key in sync_keys.items():
+        if temp_key in st.session_state:
+            st.session_state[main_key] = st.session_state[temp_key]
+            del st.session_state[temp_key]
+            
+    # 2. 处理清空输入框的请求
+    if st.session_state.get("clear_refinement"):
+        st.session_state.refinement_instruction = ""
+        del st.session_state.clear_refinement
+
     # --- 侧边栏 UI ---
     with st.sidebar:
         st.title("📚 写作智能体")
@@ -187,28 +204,44 @@ if __name__ == "__main__":
             st.text_area("请输入您的整体写作需求：", key="user_prompt", height=100)
             if st.button("生成写作计划", type="primary"):
                 result = run_step_with_spinner("plan", "正在调用“规划师”...", full_config)
-                if result: st.session_state.update(result)
+                if result and "plan" in result:
+                    st.session_state.new_plan = result["plan"]
+                    st.rerun()
 
         if 'plan' in st.session_state:
-            st.expander("写作计划").markdown(st.session_state.plan)
+            st.text_area("写作计划", key="plan", height=300)
             with st.container(border=True):
                 st.subheader("第二步：研究")
                 user_tools = tool_provider.get_user_tools_config()
                 st.selectbox("选择搜索工具:", options=list(user_tools.keys()), key="selected_tool_id")
                 if st.button("开始研究", type="primary"):
                     result = run_step_with_spinner("research", f"正在使用工具 '{st.session_state.selected_tool_id}' 进行研究...", full_config)
-                    if result: st.session_state.update(result)
+                    if result and "research_results" in result:
+                        st.session_state.new_research_results = result["research_results"]
+                        st.rerun()
 
         if 'research_results' in st.session_state:
-            st.expander("研究摘要").markdown(st.session_state.research_results)
+            st.text_area("研究摘要", key="research_results", height=300)
             with st.container(border=True):
                 st.subheader("第三步：大纲")
-                if st.button("生成大纲", type="primary"):
-                    result = run_step_with_spinner("outline", "正在调用“大纲师”...", full_config)
-                    if result: st.session_state.update(result)
-
-        if 'outline' in st.session_state:
-            st.expander("文章大纲").markdown(st.session_state.outline)
+                
+                # 如果还没有大纲，只显示生成按钮
+                if 'outline' not in st.session_state:
+                    if st.button("生成大纲", type="primary"):
+                        result = run_step_with_spinner("outline", "正在调用“大纲师”...", full_config)
+                        if result and "outline" in result:
+                            st.session_state.new_outline = result["outline"]
+                            st.rerun()
+                else:
+                    # 如果已有大纲，显示可编辑区域和优化工具
+                    st.text_area("文章大纲", key="outline", height=400)
+                    st.text_input("优化指令 (例如：增加一个关于XXX的章节，或调整某部分顺序)", key="refinement_instruction", placeholder="请在此输入具体的优化指令...")
+                    if st.button("迭代优化大纲", type="secondary"):
+                        result = run_step_with_spinner("outline", "正在根据您的指令优化大纲...", full_config)
+                        if result and "outline" in result:
+                            st.session_state.new_outline = result["outline"]
+                            st.session_state.clear_refinement = True # 设置清空标志
+                            st.rerun()
             with st.container(border=True):
                 st.subheader("第四步：撰写 (RAG增强)")
 

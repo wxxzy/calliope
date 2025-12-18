@@ -102,7 +102,9 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             outliner_input = {
                 "plan": state.get("plan"),
                 "user_prompt": state.get("user_prompt"),
-                "research_results": state.get("research_results")
+                "research_results": state.get("research_results"),
+                "outline": state.get("outline"), # 传递当前大纲（如果存在）
+                "refinement_instruction": state.get("refinement_instruction") # 传递优化指令（如果存在）
             }
             outline = outliner_chain.invoke(outliner_input)
             workflow_logger.info(f"步骤 'outline' 完成，生成大纲。")

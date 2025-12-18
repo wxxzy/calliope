@@ -102,7 +102,7 @@ def create_research_chain(search_tool, writing_style: str = ""):
 def create_outliner_chain(writing_style: str = ""):
     """
     创建并返回“大纲”步骤的链。
-    这个链接收plan, research_results, 和 user_prompt，生成详细大纲。
+    支持初次生成和迭代优化。
     """
     outliner_llm = get_llm("outliner")
     
@@ -113,7 +113,9 @@ def create_outliner_chain(writing_style: str = ""):
             plan=RunnablePassthrough(), 
             user_prompt=RunnablePassthrough(),
             research_results=RunnablePassthrough(),
-            writing_style_instruction=lambda x: writing_style_instruction
+            writing_style_instruction=lambda x: writing_style_instruction,
+            refinement_instruction=lambda x: x.get("refinement_instruction", ""), # 从输入中获取优化指令
+            outline=lambda x: x.get("outline", "") # 传递可选的先前大纲
         )
         | OUTLINER_PROMPT 
         | outliner_llm 

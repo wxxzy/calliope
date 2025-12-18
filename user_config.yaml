@@ -43,8 +43,8 @@ steps:
   researcher: DeepSeek-V3.2
   summarizer: doubao_seed
   outliner: doubao_seed
-  drafter: doubao_seed
-  reviser: doubao_seed
+  drafter: DeepSeek-V3.2
+  reviser: gemini-2.5-flash
 embeddings:
   openai_embedding:
     template: openai

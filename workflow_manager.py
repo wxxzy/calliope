@@ -82,7 +82,12 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
     try:
         if step_name == "plan":
             planner_chain = create_planner_chain(writing_style=writing_style_description)
-            plan = planner_chain.invoke({"user_prompt": state.get("user_prompt")})
+            planner_input = {
+                "user_prompt": state.get("user_prompt"),
+                "plan": state.get("plan"), # 传递当前计划（如果存在）
+                "refinement_instruction": state.get("refinement_instruction") # 传递优化指令（如果存在）
+            }
+            plan = planner_chain.invoke(planner_input)
             workflow_logger.info(f"步骤 'plan' 完成，生成计划。")
             return {"plan": plan}
 
@@ -91,7 +96,9 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             research_chain = create_research_chain(search_tool=search_tool, writing_style=writing_style_description)
             research_input = {
                 "plan": state.get("plan"),
-                "user_prompt": state.get("user_prompt")
+                "user_prompt": state.get("user_prompt"),
+                "research_results": state.get("research_results"), # 传递当前摘要（如果存在）
+                "refinement_instruction": state.get("refinement_instruction") # 传递优化指令（如果存在）
             }
             results = research_chain.invoke(research_input)
             workflow_logger.info(f"步骤 'research' 完成，生成研究摘要。")
@@ -129,11 +136,15 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "research_results": state.get("research_results"),
                 "outline": state.get("outline"),
                 "section_to_write": state.get("section_to_write"),
-                "user_selected_docs": state.get("user_selected_docs", []) # 从UI获取用户筛选后的文档
+                "user_selected_docs": state.get("user_selected_docs", []),
+                "previous_chapter_draft": state.get("current_chapter_draft"), # 传递当前草稿以供优化
+                "refinement_instruction": state.get("refinement_instruction") # 传递优化指令
             }
             new_draft_content = generation_chain.invoke(generation_input)
             
-            if new_draft_content:
+            # 当生成的是最终接受的章节时，才进行索引
+            # (注意：当前逻辑下，每次优化也会重新索引，这是一个可以后续改进的点)
+            if new_draft_content and not state.get("refinement_instruction"):
                 try:
                     vector_store_manager.index_text(collection_name, new_draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
                     workflow_logger.info(f"新草稿章节已成功索引。")

@@ -89,10 +89,12 @@ if __name__ == "__main__":
             st.session_state[main_key] = st.session_state[temp_key]
             del st.session_state[temp_key]
             
-    # 2. 处理清空输入框的请求
-    if st.session_state.get("clear_refinement"):
-        st.session_state.refinement_instruction = ""
-        del st.session_state.clear_refinement
+    # 2. 处理清空特定输入框的请求
+    if st.session_state.get("clear_specific_refinement"):
+        key_to_clear = st.session_state.get("clear_specific_refinement")
+        if key_to_clear in st.session_state:
+            st.session_state[key_to_clear] = ""
+        del st.session_state.clear_specific_refinement
 
     # --- 侧边栏 UI ---
     with st.sidebar:
@@ -202,26 +204,50 @@ if __name__ == "__main__":
         with st.container(border=True):
             st.subheader("第一步：规划")
             st.text_area("请输入您的整体写作需求：", key="user_prompt", height=100)
-            if st.button("生成写作计划", type="primary"):
-                result = run_step_with_spinner("plan", "正在调用“规划师”...", full_config)
-                if result and "plan" in result:
-                    st.session_state.new_plan = result["plan"]
-                    st.rerun()
+
+            # 如果还没有计划，只显示生成按钮
+            if 'plan' not in st.session_state:
+                if st.button("生成写作计划", type="primary"):
+                    result = run_step_with_spinner("plan", "正在调用“规划师”...", full_config)
+                    if result and "plan" in result:
+                        st.session_state.new_plan = result["plan"]
+                        st.rerun()
+            else:
+                # 如果已有计划，显示可编辑区域和优化工具
+                st.text_area("写作计划", key="plan", height=200)
+                st.text_input("优化指令", key="plan_refinement_instruction", placeholder="例如：使核心要点更具争议性")
+                if st.button("迭代优化计划", type="secondary"):
+                    st.session_state.refinement_instruction = st.session_state.plan_refinement_instruction
+                    result = run_step_with_spinner("plan", "正在根据您的指令优化计划...", full_config)
+                    if result and "plan" in result:
+                        st.session_state.new_plan = result["plan"]
+                        st.session_state.clear_specific_refinement = "plan_refinement_instruction"
+                        st.rerun()
 
         if 'plan' in st.session_state:
-            st.text_area("写作计划", key="plan", height=300)
             with st.container(border=True):
                 st.subheader("第二步：研究")
                 user_tools = tool_provider.get_user_tools_config()
                 st.selectbox("选择搜索工具:", options=list(user_tools.keys()), key="selected_tool_id")
-                if st.button("开始研究", type="primary"):
-                    result = run_step_with_spinner("research", f"正在使用工具 '{st.session_state.selected_tool_id}' 进行研究...", full_config)
-                    if result and "research_results" in result:
-                        st.session_state.new_research_results = result["research_results"]
-                        st.rerun()
 
-        if 'research_results' in st.session_state:
-            st.text_area("研究摘要", key="research_results", height=300)
+                # 如果还没有研究摘要，只显示生成按钮
+                if 'research_results' not in st.session_state:
+                    if st.button("开始研究", type="primary"):
+                        result = run_step_with_spinner("research", f"正在使用工具 '{st.session_state.selected_tool_id}' 进行研究...", full_config)
+                        if result and "research_results" in result:
+                            st.session_state.new_research_results = result["research_results"]
+                            st.rerun()
+                else:
+                    # 如果已有摘要，显示可编辑区域和优化工具
+                    st.text_area("研究摘要", key="research_results", height=200)
+                    st.text_input("优化指令", key="research_refinement_instruction", placeholder="例如：让摘要更简短，或补充关于XX方面的信息")
+                    if st.button("迭代优化摘要", type="secondary"):
+                        st.session_state.refinement_instruction = st.session_state.research_refinement_instruction
+                        result = run_step_with_spinner("research", "正在根据您的指令优化摘要...", full_config)
+                        if result and "research_results" in result:
+                            st.session_state.new_research_results = result["research_results"]
+                            st.session_state.clear_specific_refinement = "research_refinement_instruction"
+                            st.rerun()
             with st.container(border=True):
                 st.subheader("第三步：大纲")
                 
@@ -235,12 +261,13 @@ if __name__ == "__main__":
                 else:
                     # 如果已有大纲，显示可编辑区域和优化工具
                     st.text_area("文章大纲", key="outline", height=400)
-                    st.text_input("优化指令 (例如：增加一个关于XXX的章节，或调整某部分顺序)", key="refinement_instruction", placeholder="请在此输入具体的优化指令...")
+                    st.text_input("优化指令", key="outline_refinement_instruction", placeholder="例如：增加一个关于XXX的章节，或调整某部分顺序")
                     if st.button("迭代优化大纲", type="secondary"):
+                        st.session_state.refinement_instruction = st.session_state.outline_refinement_instruction
                         result = run_step_with_spinner("outline", "正在根据您的指令优化大纲...", full_config)
                         if result and "outline" in result:
                             st.session_state.new_outline = result["outline"]
-                            st.session_state.clear_refinement = True # 设置清空标志
+                            st.session_state.clear_specific_refinement = "outline_refinement_instruction"
                             st.rerun()
             with st.container(border=True):
                 st.subheader("第四步：撰写 (RAG增强)")

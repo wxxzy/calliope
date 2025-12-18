@@ -11,11 +11,19 @@ PLANNER_PROMPT = PromptTemplate.from_template(
 你是一位富有经验的写作规划专家。请根据用户的写作需求，以清晰、结构化的方式生成一份详细的写作计划。
 {writing_style_instruction}
 
+### 上一个版本的计划 (如果存在) ###
+{plan}
+
+### 用户优化指令 (可选) ###
+{refinement_instruction}
+
 ### 用户需求 ###
 {user_prompt}
 
 ### 输出格式 ###
-请严格按照以下Markdown格式输出，不要有任何多余的解释：
+请严格按照以下Markdown格式输出一份**完整**的新计划。不要有任何多余的解释。
+- 如果收到了“用户优化指令”，请将其作为最高优先级，对“上一个版本的计划”进行修改和完善。
+- 如果指令为空，则正常生成新计划。
 
 **1. 核心主题 (Core Theme):**
 一句话概括文章最核心的思想。
@@ -68,6 +76,12 @@ SUMMARIZER_PROMPT = PromptTemplate.from_template(
 你是一位资深的行业分析师。请整合、提炼以下“网络搜索结果”，并根据“用户原始需求”，生成一份简明扼要、重点突出的研究摘要。摘要应包含关键事实、数据和不同角度的观点。
 {writing_style_instruction}
 
+### 上一个版本的研究摘要 (如果存在) ###
+{research_results}
+
+### 用户优化指令 (可选) ###
+{refinement_instruction}
+
 ### 用户原始需求 ###
 {user_prompt}
 
@@ -75,7 +89,9 @@ SUMMARIZER_PROMPT = PromptTemplate.from_template(
 {search_results}
 
 ### 输出格式 ###
-
+请输出一份**完整**的新研究摘要。
+- 如果收到了“用户优化指令”，请将其作为最高优先级，对“上一个版本的研究摘要”进行修改和完善。
+- 如果指令为空，则正常生成新摘要。
 
 """
 )
@@ -133,6 +149,12 @@ DRAFTER_PROMPT = PromptTemplate.from_template(
 你是一位专业的作家。你的任务是根据“整体写作大纲”和“研究摘要”，专注于撰写并扩充“当前需要撰写的章节”。请确保你的写作风格、语调与用户的原始需求保持一致，并自然地融入研究摘要中的相关信息。
 {writing_style_instruction}
 
+### 上一个版本的章节草稿 (如果是在优化) ###
+{previous_chapter_draft}
+
+### 用户优化指令 (可选) ###
+{refinement_instruction}
+
 ### 用户原始需求 ###
 {user_prompt}
 
@@ -150,6 +172,7 @@ DRAFTER_PROMPT = PromptTemplate.from_template(
 
 ### 输出要求 ###
 - **只输出**“当前需要撰写的章节”的正文内容。
+- 如果收到了“用户优化指令”和“上一个版本的章节草稿”，请在之前版本的基础上进行修改和润色。否则，请生成全新的内容。
 - **不要**包含章节标题。
 - **不要**重复指令或对自己进行评论。
 - 你的输出将直接作为文章的一部分，所以请直接开始写作。

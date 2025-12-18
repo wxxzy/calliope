@@ -20,14 +20,19 @@ def _get_writing_style_instruction(writing_style: str) -> str:
 def create_planner_chain(writing_style: str = ""):
     """
     创建并返回“规划”步骤的链。
-    这个链接收用户输入，并返回一个结构化的写作计划。
+    支持初次生成和迭代优化。
     """
     planner_llm = get_llm("planner")
     
     writing_style_instruction = _get_writing_style_instruction(writing_style)
     
     planner_chain = (
-        RunnablePassthrough.assign(user_prompt=RunnablePassthrough(), writing_style_instruction=lambda x: writing_style_instruction)
+        RunnablePassthrough.assign(
+            user_prompt=RunnablePassthrough(), 
+            writing_style_instruction=lambda x: writing_style_instruction,
+            refinement_instruction=lambda x: x.get("refinement_instruction", ""), # 从输入中获取优化指令
+            plan=lambda x: x.get("plan", "") # 传递可选的先前计划
+        )
         | PLANNER_PROMPT 
         | planner_llm 
         | StrOutputParser()
@@ -79,7 +84,9 @@ def create_research_chain(search_tool, writing_style: str = ""):
         RunnablePassthrough.assign(
             user_prompt=RunnablePassthrough(),
             search_results=RunnablePassthrough(), # search_results 由上一个步骤传入
-            writing_style_instruction=lambda x: writing_style_instruction
+            writing_style_instruction=lambda x: writing_style_instruction,
+            refinement_instruction=lambda x: x.get("refinement_instruction", ""),
+            research_results=lambda x: x.get("research_results", "")
         )
         | SUMMARIZER_PROMPT
         | get_llm("summarizer")
@@ -143,14 +150,16 @@ def retrieve_documents_for_drafting(collection_name: str, section_to_write: str,
 def create_draft_generation_chain(writing_style: str = ""):
     """
     创建根据用户选择的上下文生成草稿的链。
-    输入字典需要包含 'user_selected_docs' 键。
+    支持初次生成和迭代优化。
     """
     drafter_llm = get_llm("drafter")
     writing_style_instruction = _get_writing_style_instruction(writing_style)
 
     generation_chain = (
         RunnablePassthrough.assign(
-            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("user_selected_docs", []))
+            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("user_selected_docs", [])),
+            previous_chapter_draft=lambda x: x.get("previous_chapter_draft", ""),
+            refinement_instruction=lambda x: x.get("refinement_instruction", "")
         )
         | RunnablePassthrough.assign(writing_style_instruction=lambda x: writing_style_instruction)
         | DRAFTER_PROMPT

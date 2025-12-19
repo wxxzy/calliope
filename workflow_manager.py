@@ -7,7 +7,8 @@
 from chains import (
     create_planner_chain, create_research_chain, create_outliner_chain,
     retrieve_documents_for_drafting, create_draft_generation_chain,
-    retrieve_documents_for_revising, create_revise_generation_chain
+    retrieve_documents_for_revising, create_revise_generation_chain,
+    create_chapter_summary_chain
 )
 import tool_provider
 import text_splitter_provider
@@ -135,23 +136,29 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             # 当生成的是最终接受的章节时，才进行索引
             if new_draft_content and not state.get("refinement_instruction"):
                 try:
-                    # 构造更丰富的元数据
+                    # 步骤1: 为新章节生成摘要
+                    workflow_logger.info("正在为新章节生成摘要...")
+                    summary_chain = create_chapter_summary_chain()
+                    chapter_summary = summary_chain.invoke({"chapter_text": new_draft_content})
+                    workflow_logger.info(f"章节摘要生成完毕: {chapter_summary[:100]}...")
+
+                    # 步骤2: 索引该摘要，而不是全文
                     metadata = {
                         "project_name": state.get("project_name"),
                         "chapter_index": state.get("drafting_index", 0) + 1,
                         "section_title": state.get("section_to_write"),
-                        "document_type": "chapter_section",
-                        "source": f"project_{state.get('project_name')}_chapter_{state.get('drafting_index', 0) + 1}_section_{state.get('section_to_write')[:50].replace('/', '_').replace('\\', '_')}"
+                        "document_type": "chapter_summary", # 明确文档类型为章节摘要
+                        "source": f"project_{state.get('project_name')}_chapter_{state.get('drafting_index', 0) + 1}_summary"
                     }
-                    vector_store_manager.index_text(collection_name, new_draft_content, text_splitter, metadata=metadata)
-                    workflow_logger.info(f"新草稿章节已成功索引，元数据: {metadata}")
+                    vector_store_manager.index_text(collection_name, chapter_summary, text_splitter, metadata=metadata)
+                    workflow_logger.info(f"新章节的摘要已成功索引，元数据: {metadata}")
+
                 except Exception as e:
-                    workflow_logger.error(f"步骤 'generate_draft' 中索引草稿内容时发生向量数据库错误: {e}", exc_info=True)
-                    raise VectorStoreOperationError(f"无法将新章节存入记忆库: {e}")
+                    workflow_logger.error(f"步骤 'generate_draft' 中索引章节摘要时发生向量数据库错误: {e}", exc_info=True)
+                    raise VectorStoreOperationError(f"无法将新章节摘要存入记忆库: {e}")
             
             workflow_logger.info(f"步骤 'generate_draft' 完成。")
             return {"new_draft_content": new_draft_content}
-
         elif step_name == "retrieve_for_revise":
             retrieved_docs = retrieve_documents_for_revising(
                 collection_name=collection_name,

@@ -5,7 +5,11 @@
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from llm_provider import get_llm
-from prompts import PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT
+from prompts import (
+    PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, 
+    OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT, QUERY_REWRITER_PROMPT,
+    CHAPTER_SUMMARIZER_PROMPT
+)
 from vector_store_manager import retrieve_context
 from config_manager import CONFIG
 from re_ranker_provider import get_re_ranker
@@ -42,6 +46,33 @@ def create_planner_chain(writing_style: str = ""):
     )
     
     return planner_chain
+
+def create_query_rewrite_chain():
+    """
+    创建并返回一个用于重写RAG查询的链。
+    """
+    query_rewriter_llm = get_llm("query_rewriter")
+    
+    rewriter_chain = (
+        QUERY_REWRITER_PROMPT 
+        | query_rewriter_llm 
+        | StrOutputParser()
+    )
+    
+    return rewriter_chain
+def create_chapter_summary_chain():
+    """
+    创建并返回一个用于生成章节摘要的链（用于RAG记忆）。
+    """
+    summarizer_llm = get_llm("chapter_summarizer")
+    
+    summary_chain = (
+        CHAPTER_SUMMARIZER_PROMPT
+        | summarizer_llm
+        | StrOutputParser()
+    )
+    
+    return summary_chain
 
 def create_research_chain(search_tool, writing_style: str = ""):
     """
@@ -157,9 +188,17 @@ def create_outliner_chain(writing_style: str = ""):
 def retrieve_documents_for_drafting(collection_name: str, section_to_write: str) -> list[str]:
     """
     为“撰写”步骤从向量数据库检索文档。
+    包含查询重写步骤。
     """
-    logger.info(f"为撰写章节 '{section_to_write[:50]}...' 检索文档...")
+    logger.info(f"为撰写章节 '{section_to_write[:50]}...' 准备检索...")
     
+    # 步骤1: 重写查询
+    query_rewrite_chain = create_query_rewrite_chain()
+    rewritten_query = query_rewrite_chain.invoke({"original_query": section_to_write})
+    logger.info(f"原始查询: '{section_to_write[:100]}...'")
+    logger.info(f"重写后查询: '{rewritten_query}'")
+    
+    # 步骤2: 使用重写后的查询进行检索
     rag_config = CONFIG.get("rag", {})
     recall_k = rag_config.get("recall_k", 20)
     rerank_k = rag_config.get("rerank_k", 5)
@@ -167,7 +206,7 @@ def retrieve_documents_for_drafting(collection_name: str, section_to_write: str)
 
     return retrieve_context(
         collection_name=collection_name,
-        query=section_to_write,
+        query=rewritten_query,
         recall_k=recall_k,
         re_ranker=re_ranker,
         rerank_k=rerank_k
@@ -197,16 +236,26 @@ def create_draft_generation_chain(writing_style: str = ""):
 def retrieve_documents_for_revising(collection_name: str, full_draft: str) -> list[str]:
     """
     为“修订”步骤从向量数据库检索文档。
+    包含查询重写步骤。
     """
-    logger.info("为修订全文检索文档...")
+    logger.info("为修订全文准备检索...")
+    
+    # 步骤1: 重写查询
+    # 对于修订，我们只取草稿的前一小部分来生成概括性查询，避免输入过长
+    query_for_rewriting = f"总结以下文稿的核心主题和风格，生成用于检索相关背景资料的关键词：\n\n{full_draft[:1500]}"
+    query_rewrite_chain = create_query_rewrite_chain()
+    rewritten_query = query_rewrite_chain.invoke({"original_query": query_for_rewriting})
+    logger.info(f"原始查询 (用于重写): '{query_for_rewriting[:200]}...'")
+    logger.info(f"重写后查询: '{rewritten_query}'")
 
+    # 步骤2: 使用重写后的查询进行检索
     rag_config = CONFIG.get("rag", {})
     recall_k = rag_config.get("recall_k", 30) # 修订时召回更多
     rerank_k = rag_config.get("rerank_k", 7) # 修订时使用更多上下文
 
     return retrieve_context(
         collection_name=collection_name,
-        query=full_draft[:2000],
+        query=rewritten_query,
         recall_k=recall_k,
         re_ranker=get_re_ranker(),
         rerank_k=rerank_k

@@ -980,3 +980,151 @@ if __name__ == "__main__":
                         st.error(f"保存活跃重排器失败: {e}")
         else:
             st.info("没有可用的重排器可选。请先添加重排器。")
+
+        st.markdown("---")
+        st.subheader("RAG检索设置")
+        
+        current_rag_config = full_config.get("rag", {})
+        
+        with st.form("rag_settings_form"):
+            recall_k = st.number_input(
+                "初始召回数量 (recall_k)", 
+                min_value=1, 
+                max_value=100, 
+                value=current_rag_config.get("recall_k", 20),
+                help="在向量数据库中进行相似度搜索时，初始召回的文档数量。"
+            )
+            rerank_k = st.number_input(
+                "精排后数量 (rerank_k)",
+                min_value=1,
+                max_value=20,
+                value=current_rag_config.get("rerank_k", 5),
+                help="在使用重排序器对召回的文档进行重新排序后，最终保留的最相关的文档数量。"
+            )
+
+            submitted_rag_settings = st.form_submit_button("保存RAG设置")
+            if submitted_rag_settings:
+                try:
+                    user_config = config_manager.load_user_config()
+                    if "rag" not in user_config:
+                        user_config["rag"] = {}
+                    user_config["rag"]["recall_k"] = recall_k
+                    user_config["rag"]["rerank_k"] = rerank_k
+                    config_manager.save_user_config(user_config)
+                    st.success("RAG检索设置已成功保存！")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"保存RAG设置失败: {e}")
+
+        st.markdown("---")
+        st.subheader("文本切分器配置")
+
+        # 获取所有可用的切分器实例和模板
+        user_splitters_config = text_splitter_provider.get_user_splitters_config()
+        available_splitter_ids = list(user_splitters_config.keys())
+        splitter_templates = text_splitter_provider.get_splitter_templates()
+        splitter_template_names = list(splitter_templates.keys())
+        current_active_splitter_id = full_config.get("active_text_splitter")
+
+        # --- 选择活跃切分器 ---
+        if available_splitter_ids:
+            with st.form("active_splitter_selection_form"):
+                st.write("**选择当前活跃的文本切分器**")
+                default_active_splitter_index = 0
+                if current_active_splitter_id and current_active_splitter_id in available_splitter_ids:
+                    default_active_splitter_index = available_splitter_ids.index(current_active_splitter_id)
+                
+                selected_active_splitter_id = st.selectbox(
+                    "活跃切分器:",
+                    options=available_splitter_ids,
+                    index=default_active_splitter_index,
+                    key="active_splitter_selector",
+                    label_visibility="collapsed",
+                    help="此切分器将用于在将文档存入记忆库时对其进行切块。"
+                )
+                
+                submitted_active_splitter = st.form_submit_button("保存活跃切分器")
+                if submitted_active_splitter:
+                    try:
+                        user_config = config_manager.load_user_config()
+                        user_config["active_text_splitter"] = selected_active_splitter_id
+                        config_manager.save_user_config(user_config)
+                        st.success(f"活跃文本切分器已设置为 '{selected_active_splitter_id}'！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"保存活跃文本切分器失败: {e}")
+        else:
+            st.info("没有可用的文本切分器可选。")
+
+        # --- 管理切分器实例 ---
+        st.write("以下是所有可用的文本切分器实例。")
+        for splitter_id in sorted(user_splitters_config.keys()):
+            details = user_splitters_config[splitter_id]
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                with st.expander(f"**{splitter_id}** (模板: {details.get('template')})"):
+                    st.json(details)
+            with col2:
+                if st.button("删除", key=f"delete_splitter_{splitter_id}", use_container_width=True):
+                    try:
+                        # 从用户配置中删除该实例
+                        current_user_splitters = text_splitter_provider.get_user_splitters_config()
+                        if splitter_id in current_user_splitters:
+                            del current_user_splitters[splitter_id]
+                            text_splitter_provider.save_user_splitters_config(current_user_splitters)
+                            
+                            # 如果删除的是活跃切分器，也需要从主用户配置中移除
+                            user_config = config_manager.load_user_config()
+                            if user_config.get("active_text_splitter") == splitter_id:
+                                del user_config["active_text_splitter"]
+                                config_manager.save_user_config(user_config)
+
+                            st.success(f"切分器实例 '{splitter_id}' 已删除。")
+                            st.rerun()
+                        else:
+                            st.error("未找到要删除的切分器。")
+                    except Exception as e:
+                        st.error(f"删除失败: {e}")
+        
+        # --- 添加新切分器 ---
+        st.subheader("添加新文本切分器实例")
+        with st.form("add_new_splitter_form", clear_on_submit=True):
+            new_splitter_id = st.text_input("新切分器ID (例如: my_semantic_splitter)", key="new_splitter_id_input")
+            
+            selected_splitter_template_name = st.selectbox("选择模板", 
+                                                        options=splitter_template_names, 
+                                                        key="selected_splitter_template_name_select")
+
+            new_splitter_config = {}
+            if selected_splitter_template_name:
+                template_details = splitter_templates.get(selected_splitter_template_name, {})
+                template_params = template_details.get("params", {})
+                new_splitter_config["template"] = selected_splitter_template_name
+
+                # 根据模板参数动态显示输入字段
+                for param_name, param_type in template_params.items():
+                    if param_type == "int":
+                        val = st.number_input(f"参数: {param_name}", key=f"new_splitter_param_{param_name}", value=0)
+                        if val != 0: new_splitter_config[param_name] = val
+                    elif param_type == "float":
+                        val = st.number_input(f"参数: {param_name}", key=f"new_splitter_param_{param_name}", value=0.0, format="%.2f")
+                        if val != 0.0: new_splitter_config[param_name] = val
+                    else: # string
+                        val = st.text_input(f"参数: {param_name}", key=f"new_splitter_param_{param_name}")
+                        if val: new_splitter_config[param_name] = val
+            
+            submitted_splitter = st.form_submit_button("添加切分器")
+            if submitted_splitter:
+                if not new_splitter_id:
+                    st.error("切分器ID不能为空！")
+                elif new_splitter_id in user_splitters_config:
+                    st.error(f"切分器ID '{new_splitter_id}' 已存在，请选择其他ID。")
+                else:
+                    try:
+                        current_user_splitters = text_splitter_provider.get_user_splitters_config()
+                        current_user_splitters[new_splitter_id] = new_splitter_config
+                        text_splitter_provider.save_user_splitters_config(current_user_splitters)
+                        st.success(f"切分器实例 '{new_splitter_id}' 已成功添加！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"保存切分器失败: {e}")

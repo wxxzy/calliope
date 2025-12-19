@@ -35,6 +35,8 @@ models:
     base_url_env: QIANFAN_BASE_URL
 steps:
   planner: gemini-2.5-flash
+  query_rewriter: gemini-2.5-flash
+  chapter_summarizer: gemini-2.5-flash
   researcher: doubao_seed
   summarizer: doubao_seed
   outliner: doubao_seed

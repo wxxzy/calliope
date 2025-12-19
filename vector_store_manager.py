@@ -216,12 +216,17 @@ if __name__ == '__main__':
         from text_splitter_provider import get_text_splitter
         splitter = get_text_splitter('default_recursive') # 或 'user_semantic_splitter'
         
-        # 索引一些测试数据
-        index_text(test_collection, "制作一杯美味咖啡的关键在于咖啡豆的质量和冲泡水温的控制。", splitter, metadata={"source": "coffee_guide"})
-        index_text(test_collection, "浓缩咖啡的制作需要高压萃取，通常用于制作拿铁和卡布奇诺。", splitter, metadata={"source": "espresso_basics"})
-        index_text(test_collection, "茶是一种健康的饮品，有绿茶、红茶、乌龙茶等多种类型。", splitter, metadata={"source": "tea_facts"})
-        index_text(test_collection, "挑选新鲜的咖啡豆是制作优质咖啡的第一步，建议购买烘焙日期较近的。", splitter, metadata={"source": "coffee_beans"})
-        index_text(test_collection, "冲泡咖啡的水温应在90-96摄氏度之间，过高或过低都会影响风味。", splitter, metadata={"source": "water_temp"})
+        # 索引一些测试数据，使用更丰富的元数据
+        index_text(test_collection, "制作一杯美味咖啡的关键在于咖啡豆的质量和冲泡水温的控制。", splitter, 
+                   metadata={"project_name": "咖啡指南", "chapter_index": 1, "section_title": "咖啡基础", "document_type": "chapter_section", "source": "咖啡指南_章节1_咖啡基础_1"})
+        index_text(test_collection, "浓缩咖啡的制作需要高压萃取，通常用于制作拿铁和卡布奇诺。", splitter, 
+                   metadata={"project_name": "咖啡指南", "chapter_index": 1, "section_title": "意式浓缩", "document_type": "chapter_section", "source": "咖啡指南_章节1_意式浓缩"})
+        index_text(test_collection, "茶是一种健康的饮品，有绿茶、红茶、乌龙茶等多种类型。", splitter, 
+                   metadata={"project_name": "茶的艺术", "chapter_index": 1, "section_title": "茶的种类", "document_type": "chapter_section", "source": "茶的艺术_章节1_茶的种类"})
+        index_text(test_collection, "挑选新鲜的咖啡豆是制作优质咖啡的第一步，建议购买烘焙日期较近的。", splitter, 
+                   metadata={"project_name": "咖啡指南", "chapter_index": 2, "section_title": "咖啡豆选择", "document_type": "chapter_section", "source": "咖啡指南_章节2_咖啡豆选择"})
+        index_text(test_collection, "冲泡咖啡的水温应在90-96摄氏度之间，过高或过低都会影响风味。", splitter, 
+                   metadata={"project_name": "咖啡指南", "chapter_index": 2, "section_title": "冲泡技巧", "document_type": "chapter_section", "source": "咖啡指南_章节2_冲泡技巧"})
 
         # 1. 不使用重排器进行检索
         logger.info("\n--- 不使用重排器检索 (recall_k=5, rerank_k=2) ---")

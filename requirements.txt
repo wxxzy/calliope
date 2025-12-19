@@ -24,3 +24,5 @@ beautifulsoup4>=4.12.0
 ddgs>=0.1.0 # for DuckDuckGo Search
 PySide6>=6.0.0
 PyInstaller>=5.0
+semantic-chunking>=0.1.1
+

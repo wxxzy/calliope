@@ -29,3 +29,13 @@ chinese_optimized:
   params:
     chunk_size: "int"
     chunk_overlap: "int"
+
+# 基于语义的切分器 (Semantic Chunker)
+# 使用 sentence-transformers 嵌入模型和语义相似性进行文本切分。
+# 嵌入模型由 embedding_provider 动态提供，取决于 active_embedding_model 配置。
+semantic_chunker:
+  class: "custom_splitters.SemanticTextSplitter"
+  params:
+    max_chunk_size: "int" # 每个块的最大单词数
+    similarity_threshold: "float" # 块切分的相似度阈值
+

@@ -60,3 +60,4 @@ active_embedding_model: local_bge_embedding
 rag:
   recall_k: 20
   rerank_k: 5
+active_text_splitter: my_semantic_splitter

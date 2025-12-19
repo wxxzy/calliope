@@ -133,11 +133,18 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             new_draft_content = generation_chain.invoke(generation_input)
             
             # 当生成的是最终接受的章节时，才进行索引
-            # (注意：当前逻辑下，每次优化也会重新索引，这是一个可以后续改进的点)
             if new_draft_content and not state.get("refinement_instruction"):
                 try:
-                    vector_store_manager.index_text(collection_name, new_draft_content, text_splitter, metadata={"source": f"chapter_{state.get('drafting_index', 0) + 1}"})
-                    workflow_logger.info(f"新草稿章节已成功索引。")
+                    # 构造更丰富的元数据
+                    metadata = {
+                        "project_name": state.get("project_name"),
+                        "chapter_index": state.get("drafting_index", 0) + 1,
+                        "section_title": state.get("section_to_write"),
+                        "document_type": "chapter_section",
+                        "source": f"project_{state.get('project_name')}_chapter_{state.get('drafting_index', 0) + 1}_section_{state.get('section_to_write')[:50].replace('/', '_').replace('\\', '_')}"
+                    }
+                    vector_store_manager.index_text(collection_name, new_draft_content, text_splitter, metadata=metadata)
+                    workflow_logger.info(f"新草稿章节已成功索引，元数据: {metadata}")
                 except Exception as e:
                     workflow_logger.error(f"步骤 'generate_draft' 中索引草稿内容时发生向量数据库错误: {e}", exc_info=True)
                     raise VectorStoreOperationError(f"无法将新章节存入记忆库: {e}")

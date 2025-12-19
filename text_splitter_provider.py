@@ -5,7 +5,8 @@
 import yaml
 import importlib
 from functools import lru_cache
-import logging # 导入 logging 模块
+import logging
+from config_manager import CONFIG # 导入全局CONFIG
 
 logger = logging.getLogger(__name__) # 获取当前模块的logger
 
@@ -51,6 +52,7 @@ def _get_class_from_path(class_path: str):
         logger.error(f"无法从路径 '{class_path}' 动态导入类: {e}", exc_info=True)
         raise ImportError(f"无法从路径 '{class_path}' 动态导入类: {e}")
 
+@lru_cache(maxsize=None) # 缓存文本切分器实例
 def get_text_splitter(splitter_id: str):
     """
     根据切分器ID从配置文件获取并实例化一个 LangChain TextSplitter。
@@ -88,6 +90,12 @@ def get_text_splitter(splitter_id: str):
                 except ValueError:
                     logger.error(f"切分器 '{splitter_id}' 的参数 '{param_name}' 需要整数类型，但收到 '{user_value}'。", exc_info=True)
                     raise ValueError(f"错误: 切分器 '{splitter_id}' 的参数 '{param_name}' 需要整数类型，但收到 '{user_value}'。")
+            elif param_schema_type == "float": # 新增对float类型的处理
+                try:
+                    constructor_params[param_name] = float(user_value)
+                except ValueError:
+                    logger.error(f"切分器 '{splitter_id}' 的参数 '{param_name}' 需要浮点数类型，但收到 '{user_value}'。", exc_info=True)
+                    raise ValueError(f"错误: 切分器 '{splitter_id}' 的参数 '{param_name}' 需要浮点数类型，但收到 '{user_value}'。")
             elif param_schema_type == "bool":
                 constructor_params[param_name] = str(user_value).lower() == "true"
             else: # string等
@@ -107,10 +115,25 @@ def get_text_splitter(splitter_id: str):
         logger.error(f"模板 '{template_id}' 中必须包含 'class' 字段。")
         raise ValueError(f"错误: 模板 '{template_id}' 中必须包含 'class' 字段。")
 
+def get_active_text_splitter_id() -> str:
+    """获取当前活跃的文本切分器ID。"""
+    active_splitter_id = CONFIG.get("active_text_splitter")
+    if not active_splitter_id:
+        raise ValueError("错误: 在 config.yaml 中未指定 'active_text_splitter'。")
+    return active_splitter_id
+
 # --- Test function ---
 if __name__ == '__main__':
+    # 确保在运行此测试之前，config.yaml 中至少有一个有效的 active_text_splitter 配置
+    # 例如：active_text_splitter: default_recursive
+    # 并且 user_text_splitters.yaml 中有相应的 default_recursive 配置
     try:
         logger.info("--- 测试文本切分器提供商 ---")
+        
+        # 测试 get_active_text_splitter_id
+        active_splitter_id = get_active_text_splitter_id()
+        logger.info(f"当前活跃的文本切分器ID: {active_splitter_id}")
+        assert active_splitter_id is not None
         
         logger.info("\n--- 测试 default_recursive ---")
         recursive_splitter = get_text_splitter("default_recursive")
@@ -123,6 +146,20 @@ if __name__ == '__main__':
         logger.info("\n--- 测试 markdown_splitter ---")
         markdown_splitter = get_text_splitter("markdown_splitter")
         logger.info(f"成功获取: {type(markdown_splitter)}")
+
+        # 测试 semantic_chunker 实例化 (不进行实际切分，因为它需要外部模型配置)
+        logger.info("\n--- 测试 semantic_chunker 实例化 ---")
+        # 为确保此测试能够运行，需要 user_text_splitters.yaml 中配置一个名为 'my_semantic_splitter' 的切分器，
+        # 并将其 template 指向 'semantic_chunker'。
+        # 且 config.yaml 中配置了活跃的 huggingface embedding 模型。
+        try:
+            semantic_splitter_instance = get_text_splitter("my_semantic_splitter")
+            logger.info(f"成功获取 SemanticTextSplitter 实例: {type(semantic_splitter_instance)}")
+        except ValueError as ve:
+            logger.warning(f"无法实例化 'my_semantic_splitter'，可能是缺少配置或嵌入模型问题: {ve}")
+        except Exception as e:
+            logger.error(f"实例化 'my_semantic_splitter' 时发生意外错误: {e}", exc_info=True)
+
 
     except (ValueError, FileNotFoundError, ImportError) as e:
         logger.error(f"\n测试失败: {e}", exc_info=True)

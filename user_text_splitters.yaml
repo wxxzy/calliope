@@ -29,3 +29,11 @@ user_semantic_splitter:
   chunk_size: 1500
   chunk_overlap: 300
 
+# 新增的语义切分器实例
+my_semantic_splitter:
+  template: "semantic_chunker"
+  description: "基于语义相似性进行切分的智能切分器，需要SentenceTransformer嵌入模型支持。"
+  max_chunk_size: 250
+  similarity_threshold: 0.35
+
+

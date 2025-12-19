@@ -96,25 +96,24 @@ def index_text(collection_name: str, text: str, text_splitter, metadata: dict = 
     logger.info(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
 
 # --- 检索 ---
-def retrieve_context(collection_name: str, query: str, n_results: int = 5, re_ranker=None, re_ranker_top_n: int = 3) -> list[str]:
+def retrieve_context(collection_name: str, query: str, recall_k: int = 20, re_ranker=None, rerank_k: int = 5) -> list[str]:
     """
     从指定集合中检索与查询最相关的文本块，并支持可选的重排。
 
     Args:
         collection_name (str): 从哪个集合检索。
         query (str): 查询字符串。
-        n_results (int): 初始检索返回的文档数量。
+        recall_k (int): 初始检索返回的文档数量。
         re_ranker: (可选) 已实例化的重排器模型，例如 CrossEncoder。
-        re_ranker_top_n (int): 重排后返回的最终文档数量。
+        rerank_k (int): 重排后返回的最终文档数量。
 
     Returns:
         list[str]: 相关的文本块内容列表。
     """
     vectorstore = get_or_create_collection(collection_name)
     
-    # 如果有重排器，则初始检索更多文档
-    initial_n_results = n_results * 3 if re_ranker else n_results 
-    results_with_scores = vectorstore.similarity_search_with_score(query, k=initial_n_results)
+    # 直接使用 recall_k 进行初始检索
+    results_with_scores = vectorstore.similarity_search_with_score(query, k=recall_k)
     
     retrieved_docs = [doc.page_content for doc, score in results_with_scores]
     logger.debug(f"从 '{collection_name}' 中为查询 '{query}' 初始检索到 {len(retrieved_docs)} 个文档。")
@@ -128,12 +127,13 @@ def retrieve_context(collection_name: str, query: str, n_results: int = 5, re_ra
         # 将文档和分数配对
         ranked_docs_with_scores = sorted(zip(retrieved_docs, scores), key=lambda x: x[1], reverse=True)
         
-        # 返回重排后的前 re_ranker_top_n 个文档
-        final_retrieved_docs = [doc for doc, score in ranked_docs_with_scores[:re_ranker_top_n]]
+        # 返回重排后的前 rerank_k 个文档
+        final_retrieved_docs = [doc for doc, score in ranked_docs_with_scores[:rerank_k]]
         logger.debug(f"重排后返回前 {len(final_retrieved_docs)} 个文档。")
         return final_retrieved_docs
     else:
-        return retrieved_docs # 如果没有重排器或没有文档，则返回初始检索结果
+        # 如果没有重排器或没有文档，则返回初始检索结果的前 rerank_k 个（保持与重排一致的返回数量）
+        return retrieved_docs[:rerank_k]
 
 def get_collection_data(collection_name: str) -> dict:
     """
@@ -224,18 +224,20 @@ if __name__ == '__main__':
         index_text(test_collection, "冲泡咖啡的水温应在90-96摄氏度之间，过高或过低都会影响风味。", splitter, metadata={"source": "water_temp"})
 
         # 1. 不使用重排器进行检索
-        logger.info("\n--- 不使用重排器检索 (k=2) ---")
+        logger.info("\n--- 不使用重排器检索 (recall_k=5, rerank_k=2) ---")
         query_no_reranker = "如何冲泡一杯好喝的咖啡？"
-        results_no_reranker = retrieve_context(test_collection, query_no_reranker, n_results=2)
+        results_no_reranker = retrieve_context(test_collection, query_no_reranker, recall_k=5, rerank_k=2)
         for doc in results_no_reranker:
             logger.info(f"- {doc[:50]}...")
+        assert len(results_no_reranker) == 2
 
         # 2. 使用重排器进行检索
-        logger.info("\n--- 使用重排器检索 (初始k=5, 重排后k=2) ---")
+        logger.info("\n--- 使用重排器检索 (recall_k=5, rerank_k=2) ---")
+        from re_ranker_provider import get_re_ranker # 移到这里，确保provider被正确mock
         reranker_instance = get_re_ranker() # 获取重排器实例
         if reranker_instance:
             query_with_reranker = "咖啡的最佳冲泡方法是什么？"
-            results_with_reranker = retrieve_context(test_collection, query_with_reranker, n_results=5, re_ranker=reranker_instance, re_ranker_top_n=2)
+            results_with_reranker = retrieve_context(test_collection, query_with_reranker, recall_k=5, re_ranker=reranker_instance, rerank_k=2)
             for doc in results_with_reranker:
                 logger.info(f"- {doc[:50]}...")
             assert len(results_with_reranker) == 2

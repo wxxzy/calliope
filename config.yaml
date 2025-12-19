@@ -57,3 +57,6 @@ embeddings:
     template: huggingface
     model_name: BAAI/bge-small-zh-v1.5
 active_embedding_model: local_bge_embedding
+rag:
+  recall_k: 20
+  rerank_k: 5

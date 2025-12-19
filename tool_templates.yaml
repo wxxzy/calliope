@@ -44,9 +44,7 @@ exa_search:
   params:
     exa_api_key_env: "secret_env" # ExaSearchResults 类构造函数接受 exa_api_key 参数
     num_results: "int" # 返回结果数量
-    # text_contents_options: "dict" # 可选参数，如果需要精细控制，可在UI中添加
-    # highlights: "bool"
-    # summary: "bool"
+    text_contents_options: "dict" # 允许用户传入一个字典来控制返回内容的长度，例如: {"max_characters": 2000}
 
 # 我们自己实现的自定义搜索函数 (tools.py中定义)
 custom_web_search_function:

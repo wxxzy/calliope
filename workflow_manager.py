@@ -70,15 +70,6 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
     workflow_logger.info(f"开始执行步骤: {step_name}, 项目: {state.get('project_name')}")
     collection_name = state.get("collection_name")
 
-    # 获取活跃的重排器实例
-    reranker_instance = None
-    if full_config.get("active_re_ranker_id"):
-        try:
-            reranker_instance = re_ranker_provider.get_re_ranker()
-            workflow_logger.debug(f"已加载活跃重排器: {full_config.get('active_re_ranker_id')}")
-        except Exception as e:
-            workflow_logger.warning(f"无法获取活跃重排器实例: {e}")
-
     try:
         if step_name == "plan":
             planner_chain = create_planner_chain(writing_style=writing_style_description)
@@ -120,8 +111,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         elif step_name == "retrieve_for_draft":
             retrieved_docs = retrieve_documents_for_drafting(
                 collection_name=collection_name,
-                section_to_write=state.get("section_to_write"),
-                re_ranker=reranker_instance
+                section_to_write=state.get("section_to_write")
             )
             workflow_logger.info(f"步骤 'retrieve_for_draft' 完成，检索到 {len(retrieved_docs)} 个文档。")
             return {"retrieved_docs": retrieved_docs}
@@ -158,8 +148,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         elif step_name == "retrieve_for_revise":
             retrieved_docs = retrieve_documents_for_revising(
                 collection_name=collection_name,
-                full_draft=state.get("full_draft"),
-                re_ranker=reranker_instance
+                full_draft=state.get("full_draft")
             )
             workflow_logger.info(f"步骤 'retrieve_for_revise' 完成，检索到 {len(retrieved_docs)} 个文档。")
             return {"retrieved_docs": retrieved_docs}

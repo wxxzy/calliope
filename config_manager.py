@@ -61,6 +61,11 @@ def _merge_configs(base_config: dict, user_config: dict) -> dict:
     if "active_re_ranker_id" in user_config:
         merged_config["active_re_ranker_id"] = user_config["active_re_ranker_id"]
 
+    # 合并 rag 配置
+    if "rag" in user_config:
+        merged_config["rag"] = merged_config.get("rag", {})
+        merged_config["rag"].update(user_config["rag"])
+
     return merged_config
     
 def load_user_config() -> dict:
@@ -97,6 +102,8 @@ def load_config() -> dict:
     except yaml.YAMLError as e:
         logger.error(f"解析 {CONFIG_PATH} 文件失败: {e}", exc_info=True)
         raise ValueError(f"错误: 解析 {CONFIG_PATH} 文件失败: {e}")
+
+CONFIG = load_config()
 
 def load_provider_templates() -> dict:
     """

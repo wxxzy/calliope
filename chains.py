@@ -7,7 +7,10 @@ from langchain_core.output_parsers import StrOutputParser
 from llm_provider import get_llm
 from prompts import PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT
 from vector_store_manager import retrieve_context
+from config_manager import CONFIG
+from re_ranker_provider import get_re_ranker
 import logging
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +76,29 @@ def create_research_chain(search_tool, writing_style: str = ""):
     )
     
     def run_search_and_aggregate(queries: list) -> str:
-        all_results = []
+        all_results_text = []
         for query in queries:
-            logger.debug(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}'")
-            tool_result = search_tool.invoke(query)
-            all_results.append(str(tool_result)) # 确保结果是字符串
-        return "\n\n---\n\n".join(all_results)
+            # 对包含非ASCII字符的查询进行URL编码，以避免底层库的编码错误
+            safe_query = quote(query)
+            logger.debug(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}' (Encoded: '{safe_query}')")
+            tool_result = search_tool.invoke(safe_query)
+            
+            # 智能处理不同工具的返回结果
+            if isinstance(tool_result, str):
+                all_results_text.append(tool_result)
+            elif isinstance(tool_result, list):
+                # 假设列表中的元素是LangChain的Document对象或类似的结构
+                for item in tool_result:
+                    if hasattr(item, 'page_content') and isinstance(item.page_content, str):
+                        all_results_text.append(item.page_content)
+                    else:
+                        # 对于无法解析的列表项，进行字符串转换作为兜底
+                        all_results_text.append(str(item))
+            else:
+                # 对于其他未知类型，进行字符串转换作为兜底
+                all_results_text.append(str(tool_result))
+
+        return "\n\n---\n\n".join(all_results_text)
 
     summarize_chain = (
         RunnablePassthrough.assign(
@@ -134,17 +154,23 @@ def create_outliner_chain(writing_style: str = ""):
 
 # RAG 流程已拆分为独立的检索和生成函数
 
-def retrieve_documents_for_drafting(collection_name: str, section_to_write: str, re_ranker=None) -> list[str]:
+def retrieve_documents_for_drafting(collection_name: str, section_to_write: str) -> list[str]:
     """
     为“撰写”步骤从向量数据库检索文档。
     """
     logger.info(f"为撰写章节 '{section_to_write[:50]}...' 检索文档...")
+    
+    rag_config = CONFIG.get("rag", {})
+    recall_k = rag_config.get("recall_k", 20)
+    rerank_k = rag_config.get("rerank_k", 5)
+    re_ranker = get_re_ranker()
+
     return retrieve_context(
         collection_name=collection_name,
         query=section_to_write,
-        n_results=10,
+        recall_k=recall_k,
         re_ranker=re_ranker,
-        re_ranker_top_n=3
+        rerank_k=rerank_k
     )
 
 def create_draft_generation_chain(writing_style: str = ""):
@@ -168,17 +194,22 @@ def create_draft_generation_chain(writing_style: str = ""):
     )
     return generation_chain
 
-def retrieve_documents_for_revising(collection_name: str, full_draft: str, re_ranker=None) -> list[str]:
+def retrieve_documents_for_revising(collection_name: str, full_draft: str) -> list[str]:
     """
     为“修订”步骤从向量数据库检索文档。
     """
     logger.info("为修订全文检索文档...")
+
+    rag_config = CONFIG.get("rag", {})
+    recall_k = rag_config.get("recall_k", 30) # 修订时召回更多
+    rerank_k = rag_config.get("rerank_k", 7) # 修订时使用更多上下文
+
     return retrieve_context(
         collection_name=collection_name,
         query=full_draft[:2000],
-        n_results=15,
-        re_ranker=re_ranker,
-        re_ranker_top_n=5
+        recall_k=recall_k,
+        re_ranker=get_re_ranker(),
+        rerank_k=rerank_k
     )
 
 def create_revise_generation_chain(writing_style: str = ""):

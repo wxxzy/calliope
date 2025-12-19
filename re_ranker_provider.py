@@ -5,7 +5,7 @@
 import os
 import importlib
 from functools import lru_cache
-from config_manager import load_config, load_provider_templates
+from config_manager import CONFIG, load_provider_templates
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,19 +26,20 @@ def _get_class_from_path(class_path: str):
         logger.error(f"无法从路径 '{class_path}' 动态导入类: {e}", exc_info=True)
         raise ImportError(f"无法从路径 '{class_path}' 动态导入类: {e}")
 
+@lru_cache(maxsize=None)
 def get_re_ranker():
     """
     根据配置文件中的 'active_re_ranker_id' 获取并实例化一个重排器模型。
+    此函数被缓存，因此只会实例化一次。
     """
-    config = load_config()
     re_ranker_templates = get_re_ranker_provider_templates()
     
-    active_re_ranker_id = config.get("active_re_ranker_id")
+    active_re_ranker_id = CONFIG.get("active_re_ranker_id")
     if not active_re_ranker_id:
         logger.debug("未配置活跃重排器，返回None。")
         return None # 如果没有配置活跃重排器，则返回None
         
-    user_re_ranker_config = config.get("re_rankers", {}).get(active_re_ranker_id)
+    user_re_ranker_config = CONFIG.get("re_rankers", {}).get(active_re_ranker_id)
     if not user_re_ranker_config:
         logger.error(f"在配置中找不到重排器ID '{active_re_ranker_id}'。")
         raise ValueError(f"错误: 在配置中找不到重排器ID '{active_re_ranker_id}'。")

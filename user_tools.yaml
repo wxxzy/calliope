@@ -39,6 +39,9 @@ exa_default:
   description: "Exa Search，新一代的搜索引擎，专注于高质量和深度内容。"
   exa_api_key_env: "EXA_API_KEY" # 对应 .env 中的 EXA_API_KEY
   num_results: 5
+  text_contents_options:
+    max_characters: 2000 #限制每个搜索结果的文本长度
+  # highlights: True # 如果需要高亮，也可以添加此项
 
 # 我们自己的自定义搜索函数实例 (备用)
 my_custom_web_search:

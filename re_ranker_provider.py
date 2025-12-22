@@ -81,35 +81,3 @@ def get_re_ranker(re_ranker_id: str):
     except Exception as e:
         logger.error(f"实例化重排器 '{re_ranker_id}' 失败: {e}\n使用的参数: {constructor_params}", exc_info=True)
         raise ValueError(f"实例化重排器 '{re_ranker_id}' 失败: {e}\n使用的参数: {constructor_params}")
-
-# --- Test function ---
-if __name__ == '__main__':
-    # 假设 config.yaml, user_config.yaml, re_ranker_templates.yaml 已正确设置
-    # 例如 user_config.yaml 中有:
-    # re_rankers:
-    #   my_reranker:
-    #     template: sentence_transformers_reranker
-    #     model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
-    # active_re_ranker_id: my_reranker
-    try:
-        logger.info("--- 测试重排器提供商 ---")
-        reranker = get_re_ranker()
-        if reranker:
-            logger.info(f"成功获取实例: {type(reranker)}")
-            # 简单的测试重排功能
-            query = "How to make a good cup of coffee?"
-            docs = [
-                "Coffee is a brewed drink prepared from roasted coffee beans.",
-                "To brew coffee, you need hot water and ground coffee.",
-                "Tea is a beverage made from the leaves of the tea plant."
-            ]
-            scores = reranker.predict([(query, doc) for doc in docs])
-            logger.info(f"重排分数: {scores}")
-            assert len(scores) == len(docs)
-        else:
-            logger.warning("未配置活跃重排器，跳过测试。")
-
-    except (ValueError, FileNotFoundError, ImportError) as e:
-        logger.error(f"测试失败: {e}", exc_info=True)
-    except Exception as e:
-        logger.error(f"发生了意外的错误: {e}", exc_info=True)

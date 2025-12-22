@@ -43,18 +43,6 @@ try:
 except ImportError:
     pass
 
-try:
-    from google.api_core.exceptions import PermissionDenied, ResourceExhausted, GoogleAPICallError
-    # 将 Google 的异常映射到我们的分类中
-    # PermissionDenied 类似于 AuthenticationError
-    _AuthenticationErrors.append(PermissionDenied)
-    # ResourceExhausted 类似于 RateLimitError
-    _RateLimitErrors.append(ResourceExhausted)
-    # GoogleAPICallError 作为通用的 API 错误
-    _APIErrors.append(GoogleAPICallError)
-except ImportError:
-    pass
-
 # 元组化，以便在 except 块中直接使用
 AUTH_ERRORS = tuple(_AuthenticationErrors)
 RATE_LIMIT_ERRORS = tuple(_RateLimitErrors)

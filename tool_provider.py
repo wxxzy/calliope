@@ -158,30 +158,3 @@ def get_tool(tool_id: str):
     else:
         logger.error(f"模板 '{template_id}' 中必须包含 'class' 或 'function' 字段。")
         raise ValueError(f"错误: 模板 '{template_id}' 中必须包含 'class' 或 'function' 字段。")
-
-# --- Test function ---
-if __name__ == '__main__':
-    # 请确保您已创建 user_tools.yaml, tool_templates.yaml 和 .env 文件并正确配置
-    try:
-        logger.info("--- 测试工具提供商 ---")
-        
-        logger.info("\n--- 测试 tavily_default ---")
-        tavily_tool = get_tool("tavily_default")
-        logger.info(f"成功获取: {tavily_tool.name}, 类型: {type(tavily_tool)}")
-        
-        logger.info("\n--- 测试 ddg_default ---")
-        ddg_tool = get_tool("ddg_default")
-        logger.info(f"成功获取: {ddg_tool.name}, 类型: {type(ddg_tool)}")
-
-        logger.info("\n--- 测试 brave_default ---")
-        brave_tool = get_tool("brave_default")
-        logger.info(f"成功获取: {brave_tool.name}, 类型: {type(brave_tool)}")
-
-        logger.info("\n--- 测试 my_custom_web_search ---")
-        custom_search_tool = get_tool("my_custom_web_search")
-        logger.info(f"成功获取: {custom_search_tool.name}, 类型: {type(custom_search_tool)}")
-
-    except (ValueError, FileNotFoundError, ImportError) as e:
-        logger.error(f"\n测试失败: {e}", exc_info=True)
-    except Exception as e:
-        logger.error(f"\n发生了意外的错误: {e}", exc_info=True)

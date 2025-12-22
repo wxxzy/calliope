@@ -100,26 +100,3 @@ def get_llm(alias: str, temperature: float = 0.7):
         logger.error(f"实例化模型 '{model_id}' 失败: {e}\n使用的参数: {constructor_params}", exc_info=True)
         raise ValueError(f"实例化模型 '{model_id}' 失败: {e}\n使用的参数: {constructor_params}")
 
-
-# --- Test function ---
-if __name__ == '__main__':
-    # 在运行此测试前，请确保您已创建 config.yaml, provider_templates.yaml 和 .env 文件并正确配置
-    try:
-        logger.info("--- 测试配置驱动的LLM提供程序 ---")
-        
-        # 加载配置以决定要测试哪些别名
-        test_config = load_config()
-        aliases_to_test = test_config.get("steps", {}).keys()
-
-        for alias in aliases_to_test:
-            logger.info(f"--- 测试别名: '{alias}' ---")
-            llm_instance = get_llm(alias)
-            logger.info(f"成功获取实例: {type(llm_instance)}")
-            # 不同的类有不同的属性来存储模型名称
-            model_attr = "model" if hasattr(llm_instance, "model") else "model_name"
-            logger.info(f"模型名称: {getattr(llm_instance, model_attr, 'N/A')}")
-
-    except (ValueError, FileNotFoundError, ImportError) as e:
-        logger.error(f"测试失败: {e}", exc_info=True)
-    except Exception as e:
-        logger.error(f"发生了意外的错误: {e}", exc_info=True)

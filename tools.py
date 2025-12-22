@@ -123,10 +123,3 @@ def check_ollama_model_availability(model_name: str, base_url: str) -> dict:
             "message": f"检查Ollama模型时发生未知错误: {e}"
         }
 
-# --- Test function ---
-if __name__ == '__main__':
-    test_query = "LangChain是什么？"
-    
-    logger.info("--- 测试自定义搜索工具 (Tavily) ---")
-    tavily_result = custom_web_search.invoke(test_query) # 使用.invoke()，因为它现在是一个Tool
-    logger.info(tavily_result)

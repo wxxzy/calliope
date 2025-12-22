@@ -4,13 +4,22 @@ models:
     model_name: gpt-4o-mini
     api_key_env: OPENAI_API_KEY
 steps:
-  drafter: my_new_model
+  planner: gemini-2.5-flash
+  critic: gemini-2.5-flash
+  graph_generator: gemini-2.5-flash
+  researcher: DeepSeek-V3.2
+  summarizer: doubao_seed
+  outliner: doubao_seed
+  drafter: DeepSeek-V3.2
+  reviser: gemini-2.5-flash
+  query_rewriter: gemini-2.5-flash
+  chapter_summarizer: doubao_seed
 embeddings:
   my_custom_embedding:
     template: openai
     model: text-embedding-3-large
     api_key_env: OPENAI_API_KEY
-active_embedding_model: my_custom_embedding
+active_embedding_model: local_bge_embedding
 writing_styles:
   academic_report: 采用严谨、客观的学术报告风格，使用专业术语，避免口语化表达。
   humorous_narrative: 以轻松幽默的口吻进行叙述，多用比喻、拟人等修辞手法，旨在逗乐读者。

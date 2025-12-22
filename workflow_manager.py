@@ -8,9 +8,11 @@ from chains import (
     create_planner_chain, create_research_chain, create_outliner_chain,
     retrieve_documents_for_drafting, create_draft_generation_chain,
     retrieve_documents_for_revising, create_revise_generation_chain,
-    create_chapter_summary_chain, create_critic_chain
+    create_chapter_summary_chain, create_critic_chain,
+    create_graph_extraction_chain
 )
 import tool_provider
+import graph_store_manager
 import text_splitter_provider
 import vector_store_manager
 import re_ranker_provider
@@ -100,6 +102,30 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             workflow_logger.info(f"步骤 'critique' 完成。")
             return {"current_critique": critique}
 
+        elif step_name == "update_graph":
+            text_to_extract = state.get("text_to_extract", "")
+            if not text_to_extract:
+                workflow_logger.warning("没有提供用于图谱提取的文本。")
+                return {"graph_updated": False}
+            
+            extraction_chain = create_graph_extraction_chain()
+            
+            try:
+                # 提取链返回的是解析后的 Python list (因为我们用了 JsonOutputParser)
+                triplets = extraction_chain.invoke({"text": text_to_extract})
+                workflow_logger.info(f"提取到的三元组: {triplets}")
+                
+                if triplets and isinstance(triplets, list):
+                    updated = graph_store_manager.update_graph_from_triplets(collection_name, triplets)
+                    return {"graph_updated": updated, "extracted_triplets": triplets}
+                else:
+                    workflow_logger.warning("提取结果格式不正确或为空。")
+                    return {"graph_updated": False}
+            except Exception as e:
+                workflow_logger.error(f"图谱提取失败: {e}", exc_info=True)
+                # 不抛出异常，以免打断主流程
+                return {"graph_updated": False, "error": str(e)}
+
         elif step_name == "plan":
             planner_chain = create_planner_chain(writing_style=writing_style_description)
             planner_input = {
@@ -143,14 +169,35 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
             rag_config = full_config.get("rag", {})
             
-            # 检索步骤不需要流式输出，因为返回的是列表
+            section_to_write = state.get("section_to_write", "")
+
+            # 1. 执行向量检索
             retrieved_docs = retrieve_documents_for_drafting(
                 collection_name=collection_name,
-                section_to_write=state.get("section_to_write"),
+                section_to_write=section_to_write,
                 recall_k=rag_config.get("recall_k", 20),
                 rerank_k=rag_config.get("rerank_k", 5),
                 re_ranker=re_ranker
             )
+
+            # 2. 执行图谱检索 (新增)
+            try:
+                # 简单策略：查找 query 中是否包含图谱中的节点名称
+                G = graph_store_manager.load_graph(collection_name)
+                all_nodes = list(G.nodes())
+                mentioned_entities = [node for node in all_nodes if node.lower() in section_to_write.lower()]
+                
+                if mentioned_entities:
+                    # 使用多跳检索获取更深层的背景关系 (Phase 2 Upgrade)
+                    graph_context = graph_store_manager.get_multi_hop_context(collection_name, mentioned_entities, radius=2)
+                    if graph_context:
+                        graph_doc = f"【知识图谱重要设定库 (含多跳关联)】:\n{graph_context}\n(请在撰写时严格遵守上述关系设定及派系立场)"
+                        # 将图谱上下文作为第一条参考资料插入
+                        retrieved_docs.insert(0, graph_doc)
+                        workflow_logger.info(f"已注入多跳图谱上下文，涉及实体: {mentioned_entities}")
+            except Exception as e:
+                workflow_logger.error(f"图谱增强检索失败: {e}", exc_info=True)
+
             workflow_logger.info(f"步骤 'retrieve_for_draft' 完成，检索到 {len(retrieved_docs)} 个文档。")
             return {"retrieved_docs": retrieved_docs}
 
@@ -191,6 +238,23 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                     }
                     vector_store_manager.index_text(collection_name, chapter_summary, text_splitter, metadata=metadata)
                     workflow_logger.info(f"新章节的摘要已成功索引，元数据: {metadata}")
+
+                    # 步骤3: 自动提取并推送到待审列表 (Phase 3 Upgrade)
+                    try:
+                        workflow_logger.info("正在从新章节中提取关系图谱并存入待审列表...")
+                        extraction_chain = create_graph_extraction_chain()
+                        triplets = extraction_chain.invoke({"text": new_draft_content})
+                        if triplets and isinstance(triplets, list):
+                            # 将新提取的关系添加到 session_state 的待审列表中
+                            current_pending = state.get("pending_triplets", [])
+                            # 避免完全重复的添加
+                            for t in triplets:
+                                if t not in current_pending:
+                                    current_pending.append(t)
+                            state["pending_triplets"] = current_pending
+                            workflow_logger.info(f"已将 {len(triplets)} 条新提取的关系推送到待审列表。")
+                    except Exception as ge:
+                        workflow_logger.warning(f"自动提取图谱失败（非致命）: {ge}")
 
                 except Exception as e:
                     workflow_logger.error(f"步骤 'generate_draft' 中索引章节摘要时发生向量数据库错误: {e}", exc_info=True)

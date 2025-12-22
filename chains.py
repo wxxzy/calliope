@@ -3,12 +3,12 @@
 我们使用LCEL（LangChain Expression Language）来构建，以获得最大的灵活性和简洁性。
 """
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from llm_provider import get_llm
 from prompts import (
     PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, 
     OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT, QUERY_REWRITER_PROMPT,
-    CHAPTER_SUMMARIZER_PROMPT, CRITIC_PROMPT
+    CHAPTER_SUMMARIZER_PROMPT, CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT
 )
 from vector_store_manager import retrieve_context
 import logging
@@ -283,7 +283,9 @@ def create_revise_generation_chain(writing_style: str = ""):
 
     generation_chain = (
         RunnablePassthrough.assign(
-            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("user_selected_docs", []))
+            retrieved_context=lambda x: "\n\n---\n\n".join(x.get("user_selected_docs", [])),
+            previous_chapter_draft=lambda x: x.get("previous_chapter_draft", ""),
+            refinement_instruction=lambda x: x.get("refinement_instruction", "")
         )
         | RunnablePassthrough.assign(writing_style_instruction=lambda x: writing_style_instruction)
         | REVISER_PROMPT
@@ -313,3 +315,19 @@ def create_critic_chain(writing_style: str = ""):
     )
     
     return critic_chain
+
+def create_graph_extraction_chain():
+    """
+    创建并返回“图谱提取”步骤的链。
+    用于从文本中提取实体关系三元组。
+    """
+    # 使用专门的 'graph_generator' 角色
+    llm = get_llm("graph_generator", temperature=0.1) 
+    
+    extraction_chain = (
+        GRAPH_EXTRACTION_PROMPT 
+        | llm 
+        | JsonOutputParser()
+    )
+    
+    return extraction_chain

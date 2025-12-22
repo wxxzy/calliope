@@ -11,6 +11,8 @@ import vector_store_manager
 import workflow_manager
 import re_ranker_provider
 import state_manager
+import graph_store_manager
+import networkx as nx
 from tools import check_ollama_model_availability
 import logger_config # 导入日志配置模块
 from custom_exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError
@@ -184,7 +186,7 @@ if __name__ == "__main__":
 
     st.title(f"项目: {st.session_state.project_name}")
     
-    tab1, tab2, tab3 = st.tabs(["主写作流程", "记忆库浏览器", "系统配置"])
+    tab1, tab2, tab3, tab4 = st.tabs(["主写作流程", "记忆库浏览器", "关系图谱", "系统配置"])
 
     with tab1:
         # --- RENDER MAIN WRITER VIEW ---
@@ -344,18 +346,18 @@ if __name__ == "__main__":
                     st.session_state.outline_sections = [s.strip() for s in st.session_state.outline.split('\n- ') if s.strip()]
                     st.session_state.drafts = []
                     st.session_state.drafting_index = 0
-                    # 清理所有与上下文审核相关的旧状态，确保重新开始
+                    # 清理所有相关状态
                     keys_to_clear = [
                         'draft_context_review_mode', 'draft_retrieved_docs', 'draft_selected_docs_mask',
                         'revise_context_review_mode', 'revise_retrieved_docs', 'revise_selected_docs_mask',
-                        'user_selected_docs', 'retrieved_docs'
+                        'user_selected_docs', 'retrieved_docs', 'current_critique', 'draft_refinement_instruction'
                     ]
                     for key in keys_to_clear:
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
 
-                # 如果进入了上下文审核模式
+                # --- 1. 上下文审核模式 (RAG审核) ---
                 if st.session_state.get('draft_context_review_mode'):
                     st.info("请审核以下检索到的记忆片段，并勾选您希望AI在本次生成中参考的内容。")
                     
@@ -371,103 +373,89 @@ if __name__ == "__main__":
                     st.session_state.draft_selected_docs_mask = selected_mask
 
                     if st.button("✅ 使用选中的记忆生成", type="primary"):
-                        # 收集用户选中的文档
                         st.session_state['user_selected_docs'] = [docs_to_review[i] for i, selected in selected_mask.items() if selected]
-                        
-                        # 调用生成步骤
                         result = run_step_with_spinner("generate_draft", "正在调用“写手”生成内容...", full_config)
                         
-                        # 处理生成结果
                         if result and "new_draft_content" in result:
-                            drafts = st.session_state.get('drafts', [])
-                            drafts.append(result["new_draft_content"])
-                            st.session_state.drafts = drafts
+                            # 正常添加草稿并递增索引
+                            st.session_state.drafts.append(result["new_draft_content"])
                             st.session_state.drafting_index += 1
                         
-                        # 清理审核状态并刷新
+                        # 清理审核状态
                         del st.session_state['draft_context_review_mode']
                         del st.session_state['draft_retrieved_docs']
                         del st.session_state['draft_selected_docs_mask']
                         st.rerun()
 
-                # 正常撰写流程
+                # --- 2. 正常撰写/待撰写提醒 (核心逻辑) ---
                 elif 'outline_sections' in st.session_state:
                     total = len(st.session_state.outline_sections)
                     current = st.session_state.get('drafting_index', 0)
 
                     if current < total:
                         st.info(f"下一章节待撰写: **{st.session_state.outline_sections[current].splitlines()[0]}**")
-                        if st.button(f"撰写章节 {current + 1}/{total}", type="primary"):
+                        if st.button(f"撰写章节 {current + 1}/{total}", type="primary", key="start_drafting_btn"):
                             st.session_state.section_to_write = st.session_state.outline_sections[current]
-                            
-                            # 第一步：只检索，不生成
                             retrieval_result = run_step_with_spinner("retrieve_for_draft", "正在检索相关记忆...", full_config)
                             
                             if retrieval_result and "retrieved_docs" in retrieval_result:
-                                # 进入审核模式
+                                st.session_state.draft_context_review_mode = True
                                 st.session_state.draft_retrieved_docs = retrieval_result['retrieved_docs']
-                                # 默认全选
                                 st.session_state.draft_selected_docs_mask = {i: True for i in range(len(retrieval_result['retrieved_docs']))}
                                 st.rerun()
                     else:
                         st.success("所有章节已撰写完毕！")
 
-                # --- 章节优化与评审功能 ---
+                # --- 3. 章节优化功能 (仅针对已写完的最后一章) ---
                 if st.session_state.get('drafts') and st.session_state.get("drafting_index", 0) > 0:
                     latest_draft_index = len(st.session_state.drafts)
                     
                     st.markdown("---")
-                    st.subheader(f"优化第 {latest_draft_index} 章")
+                    st.subheader(f"优化/评审第 {latest_draft_index} 章")
 
-                    # 1. 人工优化输入框
-                    st.text_input("本章优化指令", key="draft_refinement_instruction", placeholder="例如：增加更多环境描写，或者让对话更激烈一些")
+                    st.text_input("本章优化指令", key="draft_refinement_instruction", placeholder="例如：增加更多环境描写")
                     
-                    # 自动运行逻辑 (由评审采纳触发)
+                    # 自动重写函数 (封装逻辑以支持手动和自动调用)
+                    def perform_rewrite(instruction):
+                        # 备份当前状态以便失败回滚
+                        old_content = st.session_state.drafts[-1]
+                        st.session_state.current_chapter_draft = old_content
+                        st.session_state.refinement_instruction = instruction
+                        
+                        # 临时移除最后一章进行重写
+                        st.session_state.drafts.pop()
+                        st.session_state.drafting_index -= 1
+                        
+                        result = run_step_with_spinner("generate_draft", "正在重写章节...", full_config)
+                        
+                        if result and "new_draft_content" in result:
+                            st.session_state.drafts.append(result["new_draft_content"])
+                            st.session_state.drafting_index += 1
+                            # 成功后清理指令
+                            if "refinement_instruction" in st.session_state:
+                                del st.session_state.refinement_instruction
+                            st.session_state.clear_specific_refinement = "draft_refinement_instruction"
+                            st.success(f"第 {latest_draft_index} 章重写成功！")
+                        else:
+                            # 失败则回滚
+                            st.session_state.drafts.append(old_content)
+                            st.session_state.drafting_index += 1
+                            st.error("重写失败，已恢复原内容。")
+                        
+                        if "current_critique" in st.session_state:
+                            del st.session_state.current_critique
+                        st.rerun()
+
+                    # 自动运行逻辑
                     if st.session_state.get("auto_run_draft_refinement"):
                         del st.session_state.auto_run_draft_refinement
-                        st.session_state.refinement_instruction = st.session_state.draft_refinement_instruction
-                        
-                        # 准备重写逻辑
-                        st.session_state.current_chapter_draft = st.session_state.drafts[-1]
-                        st.session_state.drafts.pop()
-                        st.session_state.drafting_index -= 1
-                        
-                        result = run_step_with_spinner("generate_draft", "正在根据评审意见重写章节...", full_config)
-                        
-                        if result and "new_draft_content" in result:
-                            drafts = st.session_state.get('drafts', [])
-                            drafts.append(result["new_draft_content"])
-                            st.session_state.drafts = drafts
-                            st.session_state.drafting_index += 1
-                            
-                            del st.session_state.refinement_instruction
-                            if "current_critique" in st.session_state:
-                                del st.session_state.current_critique
-                            st.session_state.clear_specific_refinement = "draft_refinement_instruction"
-                            st.rerun()
+                        perform_rewrite(st.session_state.draft_refinement_instruction)
 
-                    # 人工触发重写按钮
-                    if st.button(f"重写第 {latest_draft_index} 章", type="secondary"):
-                        st.session_state.refinement_instruction = st.session_state.draft_refinement_instruction
-                        
-                        # 准备重写逻辑
-                        st.session_state.current_chapter_draft = st.session_state.drafts[-1]
-                        st.session_state.drafts.pop()
-                        st.session_state.drafting_index -= 1
-                        
-                        result = run_step_with_spinner("generate_draft", "正在根据指令重写章节...", full_config)
-                        
-                        if result and "new_draft_content" in result:
-                            drafts = st.session_state.get('drafts', [])
-                            drafts.append(result["new_draft_content"])
-                            st.session_state.drafts = drafts
-                            st.session_state.drafting_index += 1
-                            
-                            del st.session_state.refinement_instruction
-                            st.session_state.clear_specific_refinement = "draft_refinement_instruction"
-                            st.rerun()
+                    # 手动重写按钮
+                    if st.button(f"根据指令重写第 {latest_draft_index} 章", type="secondary"):
+                        perform_rewrite(st.session_state.draft_refinement_instruction)
 
-                    # 2. AI 评审员
+                    # AI 评审员
                     with st.expander(f"🧐 第 {latest_draft_index} 章 AI 评审员反馈", expanded=False):
                         if st.button(f"🔍 请求 AI 评审 (第 {latest_draft_index} 章)", key=f"critique_draft_{latest_draft_index}_btn"):
                             st.session_state.critique_target_type = "draft"
@@ -480,14 +468,14 @@ if __name__ == "__main__":
                             st.markdown(st.session_state.current_critique)
                             
                             def adopt_draft_critique_callback():
-                                """回调：更新输入框并设置自动运行标志"""
                                 st.session_state.draft_refinement_instruction = f"请参考以下评审意见进行修改：\n{st.session_state.current_critique}"
                                 st.session_state.auto_run_draft_refinement = True
 
-                            st.button("🔧 采纳建议并重写本章", key=f"refine_draft_{latest_draft_index}_with_critique", on_click=adopt_draft_critique_callback)
+                            st.button("🔧 采纳建议并重写本章", key=f"refine_draft_btn_{latest_draft_index}", on_click=adopt_draft_critique_callback)
 
-                # 显示已完成的草稿
+                # 显示完整草稿
                 if st.session_state.get('drafts'):
+                    st.expander("完整初稿", expanded=True).markdown("\n\n".join(st.session_state.drafts))
                     st.expander("完整初稿").markdown("\n\n".join(st.session_state.drafts))
 
         # 当所有章节撰写完毕后，显示修订步骤
@@ -578,6 +566,159 @@ if __name__ == "__main__":
                     st.rerun()
 
     with tab3:
+        st.header("🕸️ 项目知识图谱")
+        collection_name = st.session_state.collection_name
+        
+        stats = graph_store_manager.get_graph_stats(collection_name)
+        col_s1, col_s2, col_s3 = st.columns(3)
+        col_s1.metric("实体总数", stats["node_count"])
+        col_s2.metric("关系总数", stats["edge_count"])
+        col_s3.metric("图密度", f"{stats['density']:.3f}")
+
+        st.markdown("---")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("🔍 扫描文本提取新关系", help="扫描核心记忆或最新章节"):
+                # 如果有世界观则扫描世界观，否则扫描最新草稿
+                text_to_scan = st.session_state.world_bible if st.session_state.world_bible else ""
+                if not text_to_scan and st.session_state.get("drafts"):
+                    text_to_scan = st.session_state.drafts[-1]
+                
+                if text_to_scan:
+                    st.session_state.text_to_extract = text_to_scan
+                    result = run_step_with_spinner("update_graph", "AI 正在分析实体关系...", full_config)
+                    if result and result.get("extracted_triplets"):
+                        st.session_state.pending_triplets = result.get("extracted_triplets")
+                        st.rerun()
+                else:
+                    st.warning("没有可扫描的文本内容（核心记忆或草稿为空）。")
+        with c2:
+             if st.button("🗑️ 清空主图谱", type="secondary"):
+                 graph_store_manager.save_graph(collection_name, nx.Graph())
+                 st.warning("图谱已重置。")
+                 st.rerun()
+
+        # --- 待审核区域 ---
+        if st.session_state.get("pending_triplets"):
+            st.markdown("---")
+            st.subheader("📋 待审核的新关系")
+            st.info("请审核 AI 提取的三元组，勾选您认为正确并希望存入图谱的条目。")
+            
+            pending = st.session_state.pending_triplets
+            conflicts = graph_store_manager.detect_triplet_conflicts(collection_name, pending)
+            
+            import pandas as pd
+            display_data = []
+            for i, (s, r, t) in enumerate(pending):
+                # 检查此条是否有冲突
+                conflict = next((c for c in conflicts if c["triplet"] == [s, r, t]), None)
+                status = "⚠️ 冲突" if conflict else "✅ 正常"
+                note = conflict["reason"] if conflict else ""
+                display_data.append({"ID": i, "状态": status, "源实体": s, "关系": r, "目标实体": t, "备注": note})
+            
+            df_pending = pd.DataFrame(display_data)
+            edited_df = st.data_editor(
+                df_pending, 
+                key="pending_triplets_editor",
+                num_rows="fixed",
+                disabled=["状态", "备注"],
+                hide_index=True
+            )
+
+            col_sub1, col_sbu2 = st.columns(2)
+            if col_sub1.button("✅ 确认合并入库", type="primary"):
+                # 获取用户修改后的数据
+                approved_triplets = []
+                for _, row in edited_df.iterrows():
+                    approved_triplets.append((row["源实体"], row["关系"], row["目标实体"]))
+                
+                if approved_triplets:
+                    graph_store_manager.update_graph_from_triplets(collection_name, approved_triplets)
+                    st.success(f"成功合并 {len(approved_triplets)} 条关系！")
+                    del st.session_state.pending_triplets
+                    st.rerun()
+            
+            if col_sbu2.button("❌ 放弃这些提取"):
+                del st.session_state.pending_triplets
+                st.rerun()
+
+        st.markdown("---")
+        st.subheader("🕸️ 当前核心关系图")
+        G = graph_store_manager.load_graph(collection_name)
+        if G.number_of_nodes() > 0:
+            from streamlit_agraph import agraph, Node, Edge, Config
+            
+            # 1. 准备节点
+            nodes = []
+            communities = graph_store_manager.detect_communities(collection_name)
+            # 颜色板：为不同派系分配颜色
+            color_palette = ["#FF4B4B", "#1C83E1", "#00D4FF", "#7DCEA0", "#F4D03F", "#EB984E", "#A569BD"]
+            
+            for node_id in G.nodes():
+                # 确定所属派系并分配颜色
+                comm_index = -1
+                for i, (name, members) in enumerate(communities.items()):
+                    if node_id in members:
+                        comm_index = i
+                        break
+                
+                color = color_palette[comm_index % len(color_palette)] if comm_index != -1 else "#E6E6E6"
+                
+                nodes.append(Node(
+                    id=node_id, 
+                    label=node_id, 
+                    size=25, 
+                    color=color,
+                    metadata={"派系": next((name for name, m in communities.items() if node_id in m), "未知")}
+                ))
+
+            # 2. 准备边
+            edges = []
+            for u, v, d in G.edges(data=True):
+                edges.append(Edge(
+                    source=u, 
+                    target=v, 
+                    label=d.get('relation', ''), 
+                    color="#808080",
+                    type="CURVE" # 曲线更美观
+                ))
+
+            # 3. 配置图谱参数
+            config = Config(
+                width=1000,
+                height=600,
+                directed=False, 
+                physics=True, # 启用物理引擎，节点会自动排布
+                hierarchical=False,
+                nodeHighlightBehavior=True,
+                highlightColor="#F7A7A7",
+                collapsible=True,
+                staticGraph=False # 允许拖拽
+            )
+
+            # 4. 渲染
+            agraph(nodes=nodes, edges=edges, config=config)
+
+            # --- 派系展示 ---
+            if communities:
+                st.subheader("👥 自动识别的派系/社区")
+                cols = st.columns(len(communities))
+                for i, (name, nodes_list) in enumerate(communities.items()):
+                    cols[i].markdown(f"**{name}**")
+                    cols[i].write(", ".join(nodes_list))
+
+            # --- 原始数据表格 ---
+            with st.expander("查看原始关系数据表"):
+                import pandas as pd
+                edges_data = []
+                for u, v, d in G.edges(data=True):
+                    edges_data.append({"源实体": u, "关系": d.get('relation', '关联'), "目标实体": v})
+                st.table(pd.DataFrame(edges_data))
+        else:
+            st.info("图谱目前为空。请尝试从核心记忆提取设定。")
+
+    with tab4:
         st.header("系统配置")
         
         # 加载所有模型模板

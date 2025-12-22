@@ -24,6 +24,11 @@ models:
     model_name: doubao-seed-1-6-251015
     api_key_env: DOUBAO_CUSTOM_API_KEY
     base_url_env: DOUBAO_CUSTOM_BASE_URL
+  DeepSeek-V3.2:
+    template: openai_compatible
+    model_name: doubao-seed-1-6-251015
+    api_key_env: DOUBAO_CUSTOM_API_KEY
+    base_url_env: DOUBAO_CUSTOM_BASE_URL
   llama3_8b:
     template: ollama
     model: qwen3:8b
@@ -34,15 +39,16 @@ models:
     api_key_env: QIANFAN_API_KEY
     base_url_env: QIANFAN_BASE_URL
 steps:
-  planner: gemini-2.5-flash
-  critic: gemini-2.5-flash
-  query_rewriter: gemini-2.5-flash
-  chapter_summarizer: gemini-2.5-flash
-  researcher: doubao_seed
+  planner: gemini-2.0-flash
+  critic: gemini-2.0-flash
+  graph_generator: gemini-2.0-flash
+  researcher: gpt-4o-mini
   summarizer: doubao_seed
   outliner: doubao_seed
   drafter: doubao_seed
   reviser: doubao_seed
+  query_rewriter: gemini-2.0-flash
+  chapter_summarizer: doubao_seed
 embeddings:
   openai_embedding:
     template: openai

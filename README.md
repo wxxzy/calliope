@@ -1,36 +1,44 @@
-# AI 分步式长篇写作智能体
+# Calliope - AI 分步式长篇写作智能体
 
-这是一个基于大语言模型（LLM）的交互式写作助手原型，旨在模拟专业作家的分步骤工作流程，帮助用户从零开始构建高质量、高一致性的长篇内容。通过将复杂的写作任务分解为规划、研究、大纲、撰写和修订等多个阶段，本智能体旨在提升写作效率和内容质量。
+Calliope 是一个基于大语言模型（LLM）的交互式写作助手，专为长篇内容创作设计。它模拟专业作家的分步骤工作流程（规划 -> 研究 -> 大纲 -> 撰写 -> 修订），并利用先进的 **RAG（检索增强生成）** 技术和 **Re-ranking（重排序）** 机制，确保长篇故事或报告在逻辑、设定和文风上的高度一致性。
 
-## ✨ 特性
+## ✨ 核心特性
 
-*   **记忆系统 / RAG:** 通过集成的ChromaDB向量数据库，为每个写作项目创建独立的“记忆库”。能够索引“世界观”和已完成的章节，并在后续的撰写和修订中智能检索相关上下文，极大地提升了长篇内容的一致性。
-*   **完全可配置:** 用户可以在UI上动态配置和管理模型、工具和文本切分器，系统会根据`config.yaml`, `user_tools.yaml`等配置文件动态加载。
-*   **多模型与多工具:** 支持并预置了多种主流LLM提供商（OpenAI, Google, Anthropic, Ollama等）和搜索工具（Tavily, Brave, DuckDuckGo等）的模板。
+*   **全流程写作工作流:** 将复杂的长篇写作拆解为独立且可控的阶段：
+    *   **📋 规划 (Planner):** 分析需求，制定整体创作蓝图。
+    *   **🔍 研究 (Researcher):** 集成 Tavily / Google Search，自动进行网络搜索并整理素材。
+    *   **📝 大纲 (Outliner):** 生成结构化大纲，支持层级调整。
+    *   **✍️ 撰写 (Drafter):** 逐章撰写，自动检索核心设定和前文摘要，拒绝“遗忘”和“幻觉”。
+    *   **🎨 修订 (Refiner):** 全文润色，基于全书上下文优化文笔和连贯性。
+*   **高级 RAG 记忆系统:** 
+    *   内置 **ChromaDB** 向量数据库，为每个项目建立独立的“世界观”和“剧情记忆”。
+    *   **Re-ranking 重排序:** 集成 `sentence-transformers` Cross-Encoder，对检索到的上下文进行二次精排，确保 LLM 看到的永远是最相关的背景信息。
+*   **本地与云端模型混用:** 
+    *   支持 **OpenAI, Anthropic, Google Gemini** 等主流云端 API。
+    *   深度集成 **Ollama**，支持本地运行 Llama 3, Mistral 等模型，并提供自动可用性检查。
+*   **高度可配置架构:** 通过 YAML 配置文件 (`config.yaml`, `user_tools.yaml` 等) 动态管理模型、工具、切分器和重排序器，无需修改代码即可切换底层引擎。
 
 ## 🚀 技术栈
 
-*   **核心语言:** Python 3.9+
-*   **配置文件:** YAML
-*   **LLM 编排:** LangChain
+*   **核心框架:** Python 3.9+, LangChain (LCEL)
 *   **Web 界面:** Streamlit
-*   **向量数据库:** ChromaDB (用于RAG)
-*   **文本切分:** `langchain-text-splitters`, `sentence-transformers`
+*   **向量数据库:** ChromaDB
+*   **RAG 增强:** `sentence-transformers` (Cross-Encoder Re-ranking)
+*   **工具集成:** Tavily API, Google Custom Search API
+*   **配置管理:** YAML 驱动的依赖注入系统
 
 ## 🛠️ 安装与运行
 
-请按照以下步骤在您的本地环境中设置并运行项目。
-
 ### 1. 克隆项目
 
-如果您从代码仓库获取此项目，请先克隆它：
 ```bash
-# git clone https://github.com/wxxzy/calliope.git
-# cd calliope
+git clone https://github.com/wxxzy/calliope.git
+cd calliope
 ```
 
-### 2. 创建并激活虚拟环境 (推荐)
+### 2. 创建环境
 
+推荐使用 Conda 或 venv：
 ```bash
 python -m venv venv
 # Windows
@@ -45,126 +53,65 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. 系统配置 (核心步骤)
+### 4. 系统配置
 
-项目的核心行为由 `config.yaml` (模型配置), `user_tools.yaml` (工具配置), `user_text_splitters.yaml` (切分器配置) 和 `.env` (环境变量) 文件控制。
+项目依赖配置文件来决定使用哪些模型和工具。
 
-#### 4.1. 配置模型 (`config.yaml`)
+#### 4.1. 环境变量 (.env)
+复制模板并填入您的 API Key：
+```bash
+cp .env.example .env
+```
+编辑 `.env` 文件：
+```ini
+# 模型 API Keys
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."
 
-这个文件是您定义和分配AI模型的地方。
+# 搜索工具 Keys (可选)
+TAVILY_API_KEY="tvly-..."
+GOOGLE_SEARCH_API_KEY="..."
+GOOGLE_SEARCH_CX="..."
 
-*   **`models` 部分:** 在这里注册所有您想使用的模型实例。
-    *   `template`: 模型使用的提供商模板ID (定义在 `provider_templates.yaml` 中)。
-    *   `model_name` 或 `model`: 模型的API名称。
-    *   `api_key_env`: (可选) 模型API密钥对应的环境变量名称。
-    *   `base_url_env`: (可选) 模型URL对应的环境变量名称。
+# Ollama 配置 (如果使用本地模型)
+OLLAMA_BASE_URL="http://localhost:11434"
+```
 
-*   **`steps` 部分:** 在这里将项目工作流的每一步（如 `planner`, `drafter`）映射到上面定义的模型实例ID。
+#### 4.2. 核心配置 (config.yaml)
+定义模型分配和 RAG 参数。您可以将不同的步骤分配给不同的模型（例如：用 GPT-4 做规划，用 Llama-3 本地模型做初稿撰写）。
 
-#### 4.2. 配置工具 (`user_tools.yaml`)
-
-这个文件是您定义和管理工具实例的地方。
-
-*   **`my_tool_id`:** 您为工具实例定义的唯一ID。
-    *   `template`: 工具使用的模板ID (定义在 `tool_templates.yaml` 中)。
-    *   `description`: (可选) 工具的描述，用于UI显示或Agent理解。
-    *   `api_key_env`, `max_results` 等: 根据工具模板定义的参数进行填写。
-
-#### 4.3. 配置文本切分器 (`user_text_splitters.yaml`)
-
-这个文件是您定义和管理文本切分器实例的地方。
-
-*   **`my_splitter_id`:** 您为切分器实例定义的唯一ID。
-    *   `template`: 切分器使用的模板ID (定义在 `text_splitter_templates.yaml` 中)。
-    *   `description`: (可选) 切分器的描述，用于UI显示。
-    *   `chunk_size`, `chunk_overlap` 等: 根据切分器模板定义的参数进行填写。
-
-#### 4.4. 设置环境变量 (`.env`)
-
-1.  **创建 `.env` 文件:**
-    在项目根目录下，将 `.env.example` 文件复制一份，并重命名为 `.env`。
-
-2.  **编辑 `.env` 文件:**
-    打开 `.env` 文件，为您在 `config.yaml` 或 `user_tools.yaml` 中配置的模型/工具所需要的所有环境变量填入实际值。
-
-    ```
-    # 示例:
-    OPENAI_API_KEY="sk-..."
-    ANTHROPIC_API_KEY="sk-ant-..."
-    GOOGLE_API_KEY="AIzaSy..."
-    TAVILY_API_KEY="tvly-..."
-    BRAVE_API_KEY="your-brave-api-key" # Brave Search API Key
-    EXA_API_KEY="your-exa-api-key" # Exa Search API Key
-    
-    # 火山方舟豆包模型 (OpenAI 兼容)
-    DOUBAO_CUSTOM_API_KEY="your-doubao-api-key"
-    DOUBAO_CUSTOM_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
-
-    # Ollama 本地模型 (可选)
-    OLLAMA_BASE_URL="http://localhost:11434" # 默认地址
-    
-    # Google Custom Search API (可选)
-    GOOGLE_SEARCH_API_KEY="your-google-search-api-key"
-    GOOGLE_SEARCH_CX="your-custom-search-engine-id"
-    ```
+#### 4.3. 工具配置 (user_tools.yaml)
+启用或禁用搜索工具，配置工具参数。
 
 ### 5. 启动应用
 
-本项目提供两种用户界面：
-
-#### 5.1. 启动 Streamlit Web 界面
-
-在您激活的虚拟环境中，运行以下命令：
 ```bash
 streamlit run app.py
 ```
-您的默认浏览器会自动打开一个新页面。
+浏览器将自动打开 `http://localhost:8501`。
 
+## 📖 使用指南
 
-## ✍️ 使用指南
+1.  **项目管理:** 在侧边栏创建新项目。所有进度和记忆都会自动持久化到 `data/project_states` 和 `data/chroma_db`。
+2.  **设定世界观:** 在“核心记忆”区域输入小说的背景、人物小传或报告的核心论点。点击更新后，这些信息将被向量化并永久存储。
+3.  **循序渐进:**
+    *   **Step 1 规划:** 告诉 AI 你想写什么，它会为你规划路径。
+    *   **Step 2 研究:** (可选) 如果需要事实支撑，使用研究工具抓取最新资料。
+    *   **Step 3 大纲:** 生成章节结构。
+    *   **Step 4 撰写:** 点击“准备撰写”。AI 会逐章生成内容。**注意：** 此时系统会自动触发 RAG，从你的“核心记忆”和“已写章节”中检索相关信息，并使用重排序器优化上下文。
+    *   **Step 5 修订:** 完成初稿后，AI 可以对全文进行润色，修复前后矛盾。
 
-1.  **打开应用:** 运行 `streamlit run app.py` 启动界面。
-2.  **创建或加载项目:** 在左侧边栏输入一个新项目的名称，点击“创建新项目”。每个项目都有自己独立的记忆库。
-3.  **配置系统 (可选):** 在侧边栏的“系统配置”区域，您可以为当前项目配置记忆模型、步骤模型以及工具实例。
-4.  **更新核心记忆:** 在主界面的“核心记忆 (世界观)”文本框中，输入您作品的核心设定（人物、背景、情节等），然后点击“更新核心记忆”。这会将您的设定存入向量数据库。
-5.  **分步执行:**
-    *   **规划:** 输入整体写作需求，生成计划。
-    *   **研究:** 选择一个搜索工具，进行在线研究。
-    *   **大纲:** 生成文章的结构大纲。
-    *   **撰写 (RAG增强):** 点击“准备撰写”解析大纲，然后逐一点击“撰写章节”。在这一步，AI会**自动检索**核心记忆和已写章节的内容，以保证上下文连贯。每完成一章，该章节也会被自动存入记忆库。
-    *   **修订 (RAG增强):** 初稿完成后，点击“开始修订全文”。AI“总编辑”会**自动检索**全文最相关的上下文，进行一次保证全局一致性的深度润色。
+## 💡 进阶开发
 
+*   **自定义重排序器:** 查看 `re_ranker_provider.py` 和 `re_ranker_templates.yaml`，您可以接入 BGE Reranker 或 Cohere Rerank。
+*   **扩展工具:** 在 `tools.py` 中添加新的 LangChain Tool，并在 `user_tools.yaml` 中注册即可使用。
 
-## 💡 未来可能的增强功能
+## 📝 待办清单 (Roadmap)
 
-*   **RAG (检索增强生成) 模块:** 整合向量数据库（如ChromaDB），以更智能地管理上下文和长篇内容的一致性。
-*   **用户反馈与迭代:** 允许用户在每一步对AI的输出进行修改和反馈，从而引导后续创作。
-*   **更多工具集成:** 例如图片生成、图表生成工具。
-*   **保存/加载项目:** 实现写作项目的持久化存储。
-*   **更复杂的大纲解析:** 提升从Markdown大纲中提取结构的能力。
+*   [ ] **多智能体协作:** 引入“评论员”角色，在写作过程中实时提供反馈。
+*   [ ] **非线性叙事支持:** 优化向量检索策略以支持倒叙、插叙等复杂结构。
+*   [ ] **导出功能:** 支持导出为 PDF, EPUB 或 Markdown 格式。
+*   [ ] **知识图谱:** 引入 GraphRAG 增强对复杂人物关系的理解。
 
 ---
-**License:**
-```
-MIT License
-
-Copyright (c) [Year] [Your Name/Organization]
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+**License:** MIT

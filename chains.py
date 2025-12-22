@@ -106,28 +106,51 @@ def create_research_chain(search_tool, writing_style: str = ""):
         | (lambda text: [line for line in text.strip().split("\n") if line.strip()]) # 解析为查询列表，并过滤空行
     )
     
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     def run_search_and_aggregate(queries: list) -> str:
+        
+        def _search_single_query(query: str) -> str:
+            """执行单个查询并返回处理后的文本结果"""
+            try:
+                # 对包含非ASCII字符的查询进行URL编码，以避免底层库的编码错误
+                safe_query = quote(query)
+                logger.debug(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}' (Encoded: '{safe_query}')")
+                tool_result = search_tool.invoke(safe_query)
+                
+                result_text = ""
+                # 智能处理不同工具的返回结果
+                if isinstance(tool_result, str):
+                    result_text = tool_result
+                elif isinstance(tool_result, list):
+                    # 假设列表中的元素是LangChain的Document对象或类似的结构
+                    temp_results = []
+                    for item in tool_result:
+                        if hasattr(item, 'page_content') and isinstance(item.page_content, str):
+                            temp_results.append(item.page_content)
+                        else:
+                            temp_results.append(str(item))
+                    result_text = "\n".join(temp_results)
+                else:
+                    result_text = str(tool_result)
+                return result_text
+            except Exception as e:
+                logger.error(f"查询 '{query}' 搜索失败: {e}", exc_info=True)
+                return f"查询 '{query}' 搜索失败。"
+
         all_results_text = []
-        for query in queries:
-            # 对包含非ASCII字符的查询进行URL编码，以避免底层库的编码错误
-            safe_query = quote(query)
-            logger.debug(f"正在使用工具 '{search_tool.name}' 搜索查询: '{query}' (Encoded: '{safe_query}')")
-            tool_result = search_tool.invoke(safe_query)
+        # 使用线程池并行执行搜索，最大并发数设为5（避免触发API速率限制）
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_query = {executor.submit(_search_single_query, q): q for q in queries}
             
-            # 智能处理不同工具的返回结果
-            if isinstance(tool_result, str):
-                all_results_text.append(tool_result)
-            elif isinstance(tool_result, list):
-                # 假设列表中的元素是LangChain的Document对象或类似的结构
-                for item in tool_result:
-                    if hasattr(item, 'page_content') and isinstance(item.page_content, str):
-                        all_results_text.append(item.page_content)
-                    else:
-                        # 对于无法解析的列表项，进行字符串转换作为兜底
-                        all_results_text.append(str(item))
-            else:
-                # 对于其他未知类型，进行字符串转换作为兜底
-                all_results_text.append(str(tool_result))
+            for future in as_completed(future_to_query):
+                query = future_to_query[future]
+                try:
+                    result = future.result()
+                    if result:
+                        all_results_text.append(result)
+                except Exception as e:
+                    logger.error(f"处理查询 '{query}' 的结果时发生未知错误: {e}", exc_info=True)
 
         return "\n\n---\n\n".join(all_results_text)
 

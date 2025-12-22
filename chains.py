@@ -11,8 +11,6 @@ from prompts import (
     CHAPTER_SUMMARIZER_PROMPT
 )
 from vector_store_manager import retrieve_context
-from config_manager import CONFIG
-from re_ranker_provider import get_re_ranker
 import logging
 from urllib.parse import quote
 
@@ -208,7 +206,7 @@ def create_outliner_chain(writing_style: str = ""):
 
 # RAG 流程已拆分为独立的检索和生成函数
 
-def retrieve_documents_for_drafting(collection_name: str, section_to_write: str) -> list[str]:
+def retrieve_documents_for_drafting(collection_name: str, section_to_write: str, recall_k: int = 20, rerank_k: int = 5, re_ranker = None) -> list[str]:
     """
     为“撰写”步骤从向量数据库检索文档。
     包含查询重写步骤。
@@ -222,11 +220,6 @@ def retrieve_documents_for_drafting(collection_name: str, section_to_write: str)
     logger.info(f"重写后查询: '{rewritten_query}'")
     
     # 步骤2: 使用重写后的查询进行检索
-    rag_config = CONFIG.get("rag", {})
-    recall_k = rag_config.get("recall_k", 20)
-    rerank_k = rag_config.get("rerank_k", 5)
-    re_ranker = get_re_ranker()
-
     return retrieve_context(
         collection_name=collection_name,
         query=rewritten_query,
@@ -256,7 +249,7 @@ def create_draft_generation_chain(writing_style: str = ""):
     )
     return generation_chain
 
-def retrieve_documents_for_revising(collection_name: str, full_draft: str) -> list[str]:
+def retrieve_documents_for_revising(collection_name: str, full_draft: str, recall_k: int = 30, rerank_k: int = 7, re_ranker = None) -> list[str]:
     """
     为“修订”步骤从向量数据库检索文档。
     包含查询重写步骤。
@@ -272,15 +265,11 @@ def retrieve_documents_for_revising(collection_name: str, full_draft: str) -> li
     logger.info(f"重写后查询: '{rewritten_query}'")
 
     # 步骤2: 使用重写后的查询进行检索
-    rag_config = CONFIG.get("rag", {})
-    recall_k = rag_config.get("recall_k", 30) # 修订时召回更多
-    rerank_k = rag_config.get("rerank_k", 7) # 修订时使用更多上下文
-
     return retrieve_context(
         collection_name=collection_name,
         query=rewritten_query,
         recall_k=recall_k,
-        re_ranker=get_re_ranker(),
+        re_ranker=re_ranker,
         rerank_k=rerank_k
     )
 

@@ -124,10 +124,18 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             return {"outline": outline}
 
         elif step_name == "retrieve_for_draft":
+            # 获取RAG配置和重排序器
+            active_re_ranker_id = full_config.get("active_re_ranker_id")
+            re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
+            rag_config = full_config.get("rag", {})
+            
             # 检索步骤不需要流式输出，因为返回的是列表
             retrieved_docs = retrieve_documents_for_drafting(
                 collection_name=collection_name,
-                section_to_write=state.get("section_to_write")
+                section_to_write=state.get("section_to_write"),
+                recall_k=rag_config.get("recall_k", 20),
+                rerank_k=rag_config.get("rerank_k", 5),
+                re_ranker=re_ranker
             )
             workflow_logger.info(f"步骤 'retrieve_for_draft' 完成，检索到 {len(retrieved_docs)} 个文档。")
             return {"retrieved_docs": retrieved_docs}
@@ -177,10 +185,18 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             workflow_logger.info(f"步骤 'generate_draft' 完成。")
             return {"new_draft_content": new_draft_content}
         elif step_name == "retrieve_for_revise":
+            # 获取RAG配置和重排序器
+            active_re_ranker_id = full_config.get("active_re_ranker_id")
+            re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
+            rag_config = full_config.get("rag", {})
+            
             # 检索步骤不需要流式
             retrieved_docs = retrieve_documents_for_revising(
                 collection_name=collection_name,
-                full_draft=state.get("full_draft")
+                full_draft=state.get("full_draft"),
+                recall_k=rag_config.get("recall_k", 30), # 修订时使用默认较高的 recall
+                rerank_k=rag_config.get("rerank_k", 7),  # 修订时使用默认较高的 rerank_k
+                re_ranker=re_ranker
             )
             workflow_logger.info(f"步骤 'retrieve_for_revise' 完成，检索到 {len(retrieved_docs)} 个文档。")
             return {"retrieved_docs": retrieved_docs}

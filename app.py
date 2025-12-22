@@ -189,6 +189,17 @@ if __name__ == "__main__":
     tab1, tab2, tab3, tab4 = st.tabs(["主写作流程", "记忆库浏览器", "关系图谱", "系统配置"])
 
     with tab1:
+        # --- 实时冲突预警 (Knowledge Graph 3.0) ---
+        if st.session_state.get("pending_triplets"):
+            pending = st.session_state.pending_triplets
+            conflicts = graph_store_manager.detect_triplet_conflicts(st.session_state.collection_name, pending)
+            if conflicts:
+                with st.sidebar: # 在侧边栏显示，以免干扰主写作区
+                    st.warning(f"⚠️ 发现 {len(conflicts)} 处逻辑冲突！请前往“关系图谱”处理。")
+                    if st.button("立即前往处理"):
+                        # 这里可以添加逻辑跳转到 Tab 3，Streamlit 较难直接跳转，但提示已经足够
+                        pass
+
         # --- RENDER MAIN WRITER VIEW ---
         collection_name = st.session_state.collection_name
         vector_store_manager.get_or_create_collection(collection_name) # 确保集合存在
@@ -475,8 +486,7 @@ if __name__ == "__main__":
 
                 # 显示完整草稿
                 if st.session_state.get('drafts'):
-                    st.expander("完整初稿", expanded=True).markdown("\n\n".join(st.session_state.drafts))
-                    st.expander("完整初稿").markdown("\n\n".join(st.session_state.drafts))
+                    st.expander("完整初稿", expanded=False).markdown("\n\n".join(st.session_state.drafts))
 
         # 当所有章节撰写完毕后，显示修订步骤
         if st.session_state.get("drafting_index", 0) > 0 and st.session_state.get("drafting_index") == len(st.session_state.get("outline_sections", [])):
@@ -708,13 +718,56 @@ if __name__ == "__main__":
                     cols[i].markdown(f"**{name}**")
                     cols[i].write(", ".join(nodes_list))
 
-            # --- 原始数据表格 ---
-            with st.expander("查看原始关系数据表"):
+            # --- 原始数据表格与在线编辑 ---
+            st.markdown("---")
+            st.subheader("🛠️ 在线编辑与管理")
+            
+            tab_edit1, tab_edit2 = st.tabs(["关系编辑", "实体管理"])
+            
+            with tab_edit1:
+                st.write("**手动新增关系**")
+                ce1, ce2, ce3, ce4 = st.columns([2, 2, 2, 1])
+                new_s = ce1.text_input("源实体", placeholder="人名/地名", key="manual_s")
+                new_r = ce2.text_input("关系", placeholder="父亲/位于/属于", key="manual_r")
+                new_t = ce3.text_input("目标实体", placeholder="人名/地名", key="manual_t")
+                if ce4.button("添加", use_container_width=True):
+                    if new_s and new_r and new_t:
+                        graph_store_manager.add_manual_edge(collection_name, new_s, new_r, new_t)
+                        st.success("关系已手动添加！")
+                        st.rerun()
+                
+                st.write("**现有关系在线修正**")
                 import pandas as pd
                 edges_data = []
                 for u, v, d in G.edges(data=True):
                     edges_data.append({"源实体": u, "关系": d.get('relation', '关联'), "目标实体": v})
-                st.table(pd.DataFrame(edges_data))
+                
+                df_edges = pd.DataFrame(edges_data)
+                edited_edges = st.data_editor(df_edges, key="main_graph_editor", num_rows="dynamic")
+                
+                # 处理删除和修改 (逻辑简化：如果点删除，需要对比差异)
+                if st.button("💾 保存上述关系的改动"):
+                    # 重新构建图谱（全量覆盖或增量比较）
+                    # 为简单起见，我们重新构建一个新图
+                    new_G = nx.Graph()
+                    for _, row in edited_edges.iterrows():
+                        new_G.add_edge(row["源实体"], row["目标实体"], relation=row["关系"])
+                    graph_store_manager.save_graph(collection_name, new_G)
+                    st.success("图谱已根据表格修改同步。")
+                    st.rerun()
+
+            with tab_edit2:
+                st.write("**节点清理**")
+                all_nodes = list(G.nodes())
+                if all_nodes:
+                    selected_node_to_del = st.multiselect("选择要删除的实体 (及其所有关联关系):", options=all_nodes)
+                    if st.button("🗑️ 确认删除选中的实体", type="secondary"):
+                        for node in selected_node_to_del:
+                            graph_store_manager.remove_node(collection_name, node)
+                        st.success(f"已删除 {len(selected_node_to_del)} 个实体。")
+                        st.rerun()
+                else:
+                    st.info("暂无实体可管理。")
         else:
             st.info("图谱目前为空。请尝试从核心记忆提取设定。")
 

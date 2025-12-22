@@ -57,7 +57,12 @@ def update_graph_from_triplets(collection_name: str, triplets: List[Tuple[str, s
     G = load_graph(collection_name)
     updated = False
     
-    for source, relation, target in triplets:
+    for triplet in triplets:
+        if not isinstance(triplet, (list, tuple)) or len(triplet) != 3:
+            logger.warning(f"跳过格式不正确的三元组: {triplet}")
+            continue
+            
+        source, relation, target = triplet
         if not source or not target or not relation:
             continue
             
@@ -200,7 +205,11 @@ def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str,
     # 定义一些具有方向性或排他性的关系关键词
     asymmetric_relations = ["父亲", "母亲", "上级", "主人", "位于"]
     
-    for s, r, t in new_triplets:
+    for triplet in new_triplets:
+        if not isinstance(triplet, (list, tuple)) or len(triplet) != 3:
+            continue
+            
+        s, r, t = triplet
         # 1. 检测完全重复
         if G.has_edge(s, t) and r in G[s][t].get('relation', ''):
             continue
@@ -218,7 +227,7 @@ def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str,
                     })
 
         # 3. 检测同源排他性冲突 (例如: 林恩位于A, 新提取出林恩位于B)
-        if "位于" in r or "身份是" in r:
+        if ("位于" in r or "身份是" in r) and G.has_node(s):
             for neighbor in G.neighbors(s):
                 existing_r = G[s][neighbor].get('relation', '')
                 if r == existing_r and neighbor != t:
@@ -240,3 +249,25 @@ def get_graph_stats(collection_name: str) -> Dict:
         "edge_count": G.number_of_edges(),
         "density": nx.density(G) if G.number_of_nodes() > 0 else 0
     }
+
+def remove_node(collection_name: str, node_id: str):
+    """手动删除一个节点及其关联的所有边"""
+    G = load_graph(collection_name)
+    if G.has_node(node_id):
+        G.remove_node(node_id)
+        save_graph(collection_name, G)
+        return True
+    return False
+
+def remove_edge(collection_name: str, source: str, target: str):
+    """手动删除一条边"""
+    G = load_graph(collection_name)
+    if G.has_edge(source, target):
+        G.remove_edge(source, target)
+        save_graph(collection_name, G)
+        return True
+    return False
+
+def add_manual_edge(collection_name: str, source: str, relation: str, target: str):
+    """人工手动添加一条边（会自动创建不存在的节点）"""
+    return update_graph_from_triplets(collection_name, [(source, relation, target)])

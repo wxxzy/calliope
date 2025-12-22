@@ -63,13 +63,27 @@ API_ERRORS = tuple(_APIErrors)
 
 workflow_logger = logging.getLogger(__name__) # 获取当前模块的logger
 
-def run_step(step_name: str, state: dict, full_config: dict, writing_style_description: str):
+def run_step(step_name: str, state: dict, full_config: dict, writing_style_description: str, stream_callback=None):
     """
     根据步骤名称、当前状态、完整配置和写作风格描述，执行相应的业务逻辑。
-    此函数现在包含了详细的错误处理逻辑。
+    此函数现在包含了详细的错误处理逻辑，并支持流式输出。
+    
+    Args:
+        stream_callback (callable, optional): 一个接受字符串块的回调函数，用于流式输出。
     """
     workflow_logger.info(f"开始执行步骤: {step_name}, 项目: {state.get('project_name')}")
     collection_name = state.get("collection_name")
+
+    def _execute_chain(chain, inputs):
+        """辅助函数：根据是否有回调决定使用 invoke 还是 stream"""
+        if stream_callback:
+            full_text = ""
+            for chunk in chain.stream(inputs):
+                full_text += chunk
+                stream_callback(chunk)
+            return full_text
+        else:
+            return chain.invoke(inputs)
 
     try:
         if step_name == "plan":
@@ -79,7 +93,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "plan": state.get("plan"), # 传递当前计划（如果存在）
                 "refinement_instruction": state.get("refinement_instruction") # 传递优化指令（如果存在）
             }
-            plan = planner_chain.invoke(planner_input)
+            plan = _execute_chain(planner_chain, planner_input)
             workflow_logger.info(f"步骤 'plan' 完成，生成计划。")
             return {"plan": plan}
 
@@ -92,7 +106,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "research_results": state.get("research_results"), # 传递当前摘要（如果存在）
                 "refinement_instruction": state.get("refinement_instruction") # 传递优化指令（如果存在）
             }
-            results = research_chain.invoke(research_input)
+            results = _execute_chain(research_chain, research_input)
             workflow_logger.info(f"步骤 'research' 完成，生成研究摘要。")
             return {"research_results": results}
 
@@ -105,11 +119,12 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "outline": state.get("outline"), # 传递当前大纲（如果存在）
                 "refinement_instruction": state.get("refinement_instruction") # 传递优化指令（如果存在）
             }
-            outline = outliner_chain.invoke(outliner_input)
+            outline = _execute_chain(outliner_chain, outliner_input)
             workflow_logger.info(f"步骤 'outline' 完成，生成大纲。")
             return {"outline": outline}
 
         elif step_name == "retrieve_for_draft":
+            # 检索步骤不需要流式输出，因为返回的是列表
             retrieved_docs = retrieve_documents_for_drafting(
                 collection_name=collection_name,
                 section_to_write=state.get("section_to_write")
@@ -131,7 +146,8 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "previous_chapter_draft": state.get("current_chapter_draft"), # 传递当前草稿以供优化
                 "refinement_instruction": state.get("refinement_instruction") # 传递优化指令
             }
-            new_draft_content = generation_chain.invoke(generation_input)
+            
+            new_draft_content = _execute_chain(generation_chain, generation_input)
             
             # 当生成的是最终接受的章节时，才进行索引
             if new_draft_content and not state.get("refinement_instruction"):
@@ -139,6 +155,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                     # 步骤1: 为新章节生成摘要
                     workflow_logger.info("正在为新章节生成摘要...")
                     summary_chain = create_chapter_summary_chain()
+                    # 摘要生成通常很快，不需要流式展示给用户
                     chapter_summary = summary_chain.invoke({"chapter_text": new_draft_content})
                     workflow_logger.info(f"章节摘要生成完毕: {chapter_summary[:100]}...")
 
@@ -160,6 +177,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             workflow_logger.info(f"步骤 'generate_draft' 完成。")
             return {"new_draft_content": new_draft_content}
         elif step_name == "retrieve_for_revise":
+            # 检索步骤不需要流式
             retrieved_docs = retrieve_documents_for_revising(
                 collection_name=collection_name,
                 full_draft=state.get("full_draft")
@@ -175,7 +193,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
                 "full_draft": state.get("full_draft"),
                 "user_selected_docs": state.get("user_selected_docs", [])
             }
-            final_manuscript = generation_chain.invoke(generation_input)
+            final_manuscript = _execute_chain(generation_chain, generation_input)
             workflow_logger.info(f"步骤 'generate_revision' 完成。")
             return {"final_manuscript": final_manuscript}
             

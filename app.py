@@ -45,22 +45,54 @@ def reset_project_state():
             del st.session_state[key]
 
 def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
-    """带spinner的运行步骤的通用函数，返回结果。"""
+    """
+    带spinner的运行步骤的通用函数，返回结果。
+    现在支持流式输出：如果步骤支持流式传输，将在UI上实时显示生成内容。
+    """
     # 从 st.session_state 获取项目专属的写作风格描述
     project_writing_style_description = st.session_state.get('project_writing_style_description', '')
 
+    # 创建一个用于流式输出的占位符
+    output_placeholder = st.empty()
+    full_response = ""
+
+    def stream_callback(chunk):
+        nonlocal full_response
+        full_response += chunk
+        # 实时更新占位符，添加光标效果
+        output_placeholder.markdown(full_response + "▌")
+
     with st.spinner(spinner_text):
         try:
-            result = workflow_manager.run_step(step_name, st.session_state, full_config, project_writing_style_description)
+            # 将 stream_callback 传递给 workflow_manager
+            # 如果该步骤支持流式传输，它将调用此回调
+            result = workflow_manager.run_step(
+                step_name, 
+                st.session_state, 
+                full_config, 
+                project_writing_style_description, 
+                stream_callback=stream_callback
+            )
+            
+            # 如果产生了流式输出，最后移除光标并显示完整文本
+            if full_response:
+                output_placeholder.markdown(full_response)
+            else:
+                # 如果该步骤没有触发流式回调（例如检索步骤），则清空占位符，以免干扰后续显示
+                output_placeholder.empty()
+
             st.success(f"步骤 '{step_name}' 已完成！")
             return result
         except (LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError) as e:
+            # 发生错误时，清空流式输出的占位符（可选，视体验而定）
+            output_placeholder.empty()
             # 捕获我们自定义的、带有用户友好信息的异常
             st.error(str(e)) # 直接显示异常中包含的友好信息
             # 日志中仍然记录完整的堆栈信息
             app_logger.error(f"执行步骤 '{step_name}' 时发生已知错误: {e}", exc_info=True)
             return None
         except Exception as e:
+            output_placeholder.empty()
             # 捕获所有其他未知异常
             st.error(f"执行步骤 '{step_name}' 时发生未知错误，请检查日志或联系管理员。")
             app_logger.error(f"执行步骤 '{step_name}' 时发生未知错误: {e}", exc_info=True)

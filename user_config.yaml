@@ -40,6 +40,7 @@ models:
     base_url_env: DOUBAO_CUSTOM_BASE_URL
 steps:
   planner: gemini-2.5-flash
+  critic: gemini-2.5-flash
   researcher: DeepSeek-V3.2
   summarizer: doubao_seed
   outliner: doubao_seed

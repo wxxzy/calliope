@@ -22,7 +22,8 @@ def save_project_state_to_file(collection_name: str):
         'research_results', 'outline', 'drafts', 'drafting_index', 
         'final_manuscript', 'outline_sections', 'user_prompt', 
         'selected_tool_id', 'full_draft', 'project_writing_style_id', 
-        'project_writing_style_description', 'retrieved_docs'
+        'project_writing_style_description', 'retrieved_docs',
+        'current_critique', 'critique_target_type' # 添加评审相关状态
     ]
     for key in keys_to_save:
         if key in st.session_state:

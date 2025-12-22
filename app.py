@@ -294,6 +294,20 @@ if __name__ == "__main__":
                     # 如果已有大纲，显示可编辑区域和优化工具
                     st.text_area("文章大纲", key="outline", height=400)
                     st.text_input("优化指令", key="outline_refinement_instruction", placeholder="例如：增加一个关于XXX的章节，或调整某部分顺序")
+                    
+                    # --- 自动执行优化的逻辑 (由评审采纳触发) ---
+                    if st.session_state.get("auto_run_outline_refinement"):
+                        del st.session_state.auto_run_outline_refinement # 消费掉flag
+                        st.session_state.refinement_instruction = st.session_state.outline_refinement_instruction
+                        result = run_step_with_spinner("outline", "正在根据评审意见优化大纲...", full_config)
+                        if result and "outline" in result:
+                            st.session_state.new_outline = result["outline"]
+                            st.session_state.clear_specific_refinement = "outline_refinement_instruction"
+                            # 清除已采纳的评审意见
+                            if "current_critique" in st.session_state:
+                                del st.session_state.current_critique
+                            st.rerun()
+
                     if st.button("迭代优化大纲", type="secondary"):
                         st.session_state.refinement_instruction = st.session_state.outline_refinement_instruction
                         result = run_step_with_spinner("outline", "正在根据您的指令优化大纲...", full_config)
@@ -301,6 +315,27 @@ if __name__ == "__main__":
                             st.session_state.new_outline = result["outline"]
                             st.session_state.clear_specific_refinement = "outline_refinement_instruction"
                             st.rerun()
+                    
+                    # --- 大纲评审功能 ---
+                    with st.expander("🧐 AI 评审员反馈", expanded=False):
+                        if st.button("🔍 请求 AI 评审 (大纲)", key="critique_outline_btn"):
+                            st.session_state.critique_target_type = "outline"
+                            result = run_step_with_spinner("critique", "评论员正在审阅大纲...", full_config)
+                            if result and "current_critique" in result:
+                                st.session_state.current_critique = result["current_critique"]
+                                st.rerun()
+                        
+                        if st.session_state.get("current_critique") and st.session_state.get("critique_target_type") == "outline":
+                            st.markdown(st.session_state.current_critique)
+                            
+                            def adopt_critique_callback():
+                                """回调：更新输入框并设置自动运行标志"""
+                                st.session_state.outline_refinement_instruction = f"请参考以下评审意见进行修改：\n{st.session_state.current_critique}"
+                                st.session_state.auto_run_outline_refinement = True
+
+                            st.button("🔧 采纳建议并自动优化大纲", key="refine_outline_with_critique", on_click=adopt_critique_callback)
+
+
             with st.container(border=True):
                 st.subheader("第四步：撰写 (RAG增强)")
 
@@ -370,13 +405,86 @@ if __name__ == "__main__":
                             
                             if retrieval_result and "retrieved_docs" in retrieval_result:
                                 # 进入审核模式
-                                st.session_state.draft_context_review_mode = True
                                 st.session_state.draft_retrieved_docs = retrieval_result['retrieved_docs']
                                 # 默认全选
                                 st.session_state.draft_selected_docs_mask = {i: True for i in range(len(retrieval_result['retrieved_docs']))}
                                 st.rerun()
                     else:
                         st.success("所有章节已撰写完毕！")
+
+                # --- 章节优化与评审功能 ---
+                if st.session_state.get('drafts') and st.session_state.get("drafting_index", 0) > 0:
+                    latest_draft_index = len(st.session_state.drafts)
+                    
+                    st.markdown("---")
+                    st.subheader(f"优化第 {latest_draft_index} 章")
+
+                    # 1. 人工优化输入框
+                    st.text_input("本章优化指令", key="draft_refinement_instruction", placeholder="例如：增加更多环境描写，或者让对话更激烈一些")
+                    
+                    # 自动运行逻辑 (由评审采纳触发)
+                    if st.session_state.get("auto_run_draft_refinement"):
+                        del st.session_state.auto_run_draft_refinement
+                        st.session_state.refinement_instruction = st.session_state.draft_refinement_instruction
+                        
+                        # 准备重写逻辑
+                        st.session_state.current_chapter_draft = st.session_state.drafts[-1]
+                        st.session_state.drafts.pop()
+                        st.session_state.drafting_index -= 1
+                        
+                        result = run_step_with_spinner("generate_draft", "正在根据评审意见重写章节...", full_config)
+                        
+                        if result and "new_draft_content" in result:
+                            drafts = st.session_state.get('drafts', [])
+                            drafts.append(result["new_draft_content"])
+                            st.session_state.drafts = drafts
+                            st.session_state.drafting_index += 1
+                            
+                            del st.session_state.refinement_instruction
+                            if "current_critique" in st.session_state:
+                                del st.session_state.current_critique
+                            st.session_state.clear_specific_refinement = "draft_refinement_instruction"
+                            st.rerun()
+
+                    # 人工触发重写按钮
+                    if st.button(f"重写第 {latest_draft_index} 章", type="secondary"):
+                        st.session_state.refinement_instruction = st.session_state.draft_refinement_instruction
+                        
+                        # 准备重写逻辑
+                        st.session_state.current_chapter_draft = st.session_state.drafts[-1]
+                        st.session_state.drafts.pop()
+                        st.session_state.drafting_index -= 1
+                        
+                        result = run_step_with_spinner("generate_draft", "正在根据指令重写章节...", full_config)
+                        
+                        if result and "new_draft_content" in result:
+                            drafts = st.session_state.get('drafts', [])
+                            drafts.append(result["new_draft_content"])
+                            st.session_state.drafts = drafts
+                            st.session_state.drafting_index += 1
+                            
+                            del st.session_state.refinement_instruction
+                            st.session_state.clear_specific_refinement = "draft_refinement_instruction"
+                            st.rerun()
+
+                    # 2. AI 评审员
+                    with st.expander(f"🧐 第 {latest_draft_index} 章 AI 评审员反馈", expanded=False):
+                        if st.button(f"🔍 请求 AI 评审 (第 {latest_draft_index} 章)", key=f"critique_draft_{latest_draft_index}_btn"):
+                            st.session_state.critique_target_type = "draft"
+                            result = run_step_with_spinner("critique", "评论员正在审阅最新章节...", full_config)
+                            if result and "current_critique" in result:
+                                st.session_state.current_critique = result["current_critique"]
+                                st.rerun()
+                        
+                        if st.session_state.get("current_critique") and st.session_state.get("critique_target_type") == "draft":
+                            st.markdown(st.session_state.current_critique)
+                            
+                            def adopt_draft_critique_callback():
+                                """回调：更新输入框并设置自动运行标志"""
+                                st.session_state.draft_refinement_instruction = f"请参考以下评审意见进行修改：\n{st.session_state.current_critique}"
+                                st.session_state.auto_run_draft_refinement = True
+
+                            st.button("🔧 采纳建议并重写本章", key=f"refine_draft_{latest_draft_index}_with_critique", on_click=adopt_draft_critique_callback)
 
                 # 显示已完成的草稿
                 if st.session_state.get('drafts'):

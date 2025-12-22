@@ -8,7 +8,7 @@ from chains import (
     create_planner_chain, create_research_chain, create_outliner_chain,
     retrieve_documents_for_drafting, create_draft_generation_chain,
     retrieve_documents_for_revising, create_revise_generation_chain,
-    create_chapter_summary_chain
+    create_chapter_summary_chain, create_critic_chain
 )
 import tool_provider
 import text_splitter_provider
@@ -86,7 +86,33 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
             return chain.invoke(inputs)
 
     try:
-        if step_name == "plan":
+        if step_name == "critique":
+            # 获取待审阅内容，根据当前上下文判断是审阅大纲还是草稿
+            target_type = state.get("critique_target_type", "draft") # 'outline' or 'draft'
+            
+            content_to_review = ""
+            if target_type == "outline":
+                content_to_review = state.get("outline", "")
+            else:
+                # 默认审阅最新生成的章节草稿
+                drafts = state.get("drafts", [])
+                content_to_review = drafts[-1] if drafts else ""
+            
+            if not content_to_review:
+                raise ValueError("没有找到可供审阅的内容。")
+
+            critic_chain = create_critic_chain(writing_style=writing_style_description)
+            critique_input = {
+                "stage": "章节撰写" if target_type == "draft" else "大纲设计",
+                "plan": state.get("plan", ""),
+                "content_to_review": content_to_review
+            }
+            
+            critique = _execute_chain(critic_chain, critique_input)
+            workflow_logger.info(f"步骤 'critique' 完成。")
+            return {"current_critique": critique}
+
+        elif step_name == "plan":
             planner_chain = create_planner_chain(writing_style=writing_style_description)
             planner_input = {
                 "user_prompt": state.get("user_prompt"),

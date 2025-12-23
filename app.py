@@ -173,7 +173,18 @@ if __name__ == "__main__":
         
         # 保存项目按钮
         if st.session_state.get('project_name'): # 仅当项目已加载时显示
-            if st.button("💾 保存当前项目进度", key="save_project_button"):
+            st.markdown("---")
+            st.info(f"**当前活跃项目:** {st.session_state.project_name}")
+            
+            # 展示一些简单的项目指标
+            current_drafts = st.session_state.get('drafts', [])
+            total_words_sidebar = sum(len(d) for d in current_drafts)
+            
+            sc1, sc2 = st.columns(2)
+            sc1.metric("已写章节", len(current_drafts))
+            sc2.metric("累计字数", total_words_sidebar)
+
+            if st.button("💾 立即保存所有进度", key="save_project_button", type="primary", use_container_width=True):
                 state_manager.save_project_state_to_file(st.session_state.collection_name)
         
         st.markdown("---")
@@ -352,6 +363,19 @@ if __name__ == "__main__":
             with st.container(border=True):
                 st.subheader("第四步：撰写 (RAG增强)")
 
+                # --- 进度条与字数统计 (UI 增强) ---
+                if 'outline_sections' in st.session_state:
+                    total_chaps = len(st.session_state.outline_sections)
+                    done_chaps = st.session_state.get('drafting_index', 0)
+                    progress = done_chaps / total_chaps if total_chaps > 0 else 0
+                    
+                    p_col1, p_col2 = st.columns([4, 1])
+                    with p_col1:
+                        st.progress(progress, text=f"写作进度: {done_chaps}/{total_chaps} 章节已完成")
+                    with p_col2:
+                        total_words = sum(len(d) for d in st.session_state.get('drafts', []))
+                        st.metric("总字数", f"{total_words:,}")
+
                 # 初始化或重置撰写状态
                 if st.button("准备撰写 (解析大纲)"):
                     st.session_state.outline_sections = [s.strip() for s in st.session_state.outline.split('\n- ') if s.strip()]
@@ -486,7 +510,12 @@ if __name__ == "__main__":
 
                 # 显示完整草稿
                 if st.session_state.get('drafts'):
-                    st.expander("完整初稿", expanded=False).markdown("\n\n".join(st.session_state.drafts))
+                    with st.expander("📖 查看完整初稿", expanded=False):
+                        for i, draft in enumerate(st.session_state.drafts):
+                            st.markdown(f"#### 第 {i+1} 章")
+                            st.caption(f"本章字数: {len(draft)} 字")
+                            st.write(draft)
+                            st.markdown("---")
 
         # 当所有章节撰写完毕后，显示修订步骤
         if st.session_state.get("drafting_index", 0) > 0 and st.session_state.get("drafting_index") == len(st.session_state.get("outline_sections", [])):

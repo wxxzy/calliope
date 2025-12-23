@@ -1,5 +1,6 @@
 import streamlit as st
 import logging
+import re
 from config import load_environment
 import config_manager
 import vector_store_manager
@@ -62,6 +63,16 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             app_logger.error(f"Error in {step_name}: {e}", exc_info=True)
             return None
 
+# 定义需要持久化保存的 Session State 键名
+SAVE_KEYS = [
+    'project_name', 'collection_name', 'world_bible', 'plan', 
+    'research_results', 'outline', 'drafts', 'drafting_index', 
+    'final_manuscript', 'outline_sections', 'user_prompt', 
+    'selected_tool_id', 'full_draft', 'project_writing_style_id', 
+    'project_writing_style_description', 'retrieved_docs',
+    'current_critique', 'critique_target_type'
+]
+
 def main():
     full_config = config_manager.load_config()
     state_manager.initialize_state_directory()
@@ -94,7 +105,6 @@ def main():
             name = st.text_input("项目名称")
             if st.button("创建"):
                 if name:
-                    # 简化版的 sanitize
                     col_name = re.sub(r'\W+', '_', name).lower()
                     st.session_state.project_name = name
                     st.session_state.collection_name = col_name
@@ -102,9 +112,15 @@ def main():
                     vector_store_manager.get_or_create_collection(col_name)
                     st.rerun()
         elif selected_option != "--- 选择项目 ---" and st.session_state.get('collection_name') != selected_option:
-            st.session_state.collection_name = selected_option
-            st.session_state.project_name = selected_option
-            if not state_manager.load_project_state_from_file(selected_option):
+            # 执行项目加载逻辑 (解耦后)
+            loaded_data = state_manager.load_state_from_file(selected_option)
+            if loaded_data:
+                st.session_state.update(loaded_data)
+                st.info(f"✅ 已恢复项目: {selected_option}")
+            else:
+                # 如果没有存档，则视作新加载
+                st.session_state.collection_name = selected_option
+                st.session_state.project_name = selected_option
                 reset_project_state()
             st.rerun()
         
@@ -116,8 +132,14 @@ def main():
             c1, c2 = st.columns(2)
             c1.metric("章节", chaps)
             c2.metric("字数", words)
+            
             if st.button("💾 保存进度", type="primary", use_container_width=True):
-                state_manager.save_project_state_to_file(st.session_state.collection_name)
+                # 解耦后的字典保存
+                data_to_save = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
+                if state_manager.save_state_to_file(st.session_state.collection_name, data_to_save):
+                    st.toast("✅ 进度已保存至磁盘")
+                else:
+                    st.error("保存失败，请检查日志")
 
     # --- 主界面入口 ---
     if 'project_name' not in st.session_state:

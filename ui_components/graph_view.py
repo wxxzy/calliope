@@ -140,11 +140,11 @@ def render_graph_view(collection_name, full_config, run_step_with_spinner_func):
         cached_names = graph_store_manager.load_cached_community_names(collection_name)
         
         if st.button("🎭 重新识别派系并自动命名"):
-            naming_chain = workflow_manager.create_community_naming_chain()
-            with st.spinner("AI 正在根据关系密度重新评估势力分布..."):
-                cached_names = graph_store_manager.generate_and_cache_community_names(
-                    collection_name, communities, naming_chain, st.session_state.world_bible
-                )
+            # 将待命名的数据暂存入 state，由 workflow_manager 转发给 Service
+            st.session_state.communities_for_naming = communities
+            result = run_step_with_spinner_func("run_naming", "AI 正在分析各势力特征并起名...", full_config)
+            if result:
+                cached_names = result # 更新本地显示用的变量
             st.success("命名与分析同步完成！")
             st.rerun()
 

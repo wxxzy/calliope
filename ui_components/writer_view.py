@@ -11,13 +11,45 @@ import export_manager
 def render_writer_view(full_config, run_step_with_spinner_func):
     """
     渲染主写作流程界面。
-    
-    Args:
-        full_config (dict): 全局合并配置。
-        run_step_with_spinner_func (callable): 处理流式输出和加载状态的 UI 包装器。
     """
     collection_name = st.session_state.collection_name
     vector_store_manager.get_or_create_collection(collection_name)
+
+    # --- 创作辅助挂件 (New: Bible Sidebar Widget) ---
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("🧐 当前场景百科")
+        
+        # 决定分析哪段文本：优先分析正要写的这一节，如果没有则分析最后一章
+        analysis_text = ""
+        if st.session_state.get("section_to_write"):
+            analysis_text = st.session_state.section_to_write
+        elif st.session_state.get("drafts"):
+            analysis_text = st.session_state.drafts[-1]
+        
+        if analysis_text:
+            from services.knowledge_service import KnowledgeService
+            scene_data = KnowledgeService.get_scene_entities_info(collection_name, analysis_text)
+            
+            if scene_data:
+                # 1. 冲突预警 (New)
+                if scene_data['conflicts']:
+                    for c in scene_data['conflicts']:
+                        st.error(f"⚠️ 场景张力预警: {c}")
+                
+                # 2. 实体卡片
+                for ent in scene_data['entities']:
+                    with st.expander(f"**{ent['name']}** ({ent['faction']})"):
+                        if ent['relations']:
+                            st.write("**核心关联:**")
+                            for r in ent['relations']:
+                                st.caption(f"• {r}")
+                        else:
+                            st.caption("暂无更多关联设定")
+            else:
+                st.info("未在当前内容中识别到已知实体。")
+        else:
+            st.info("开始撰写后，这里将自动浮现相关背景设定。")
 
     # 1. 写作风格选择器
     global_writing_styles_library = full_config.get("writing_styles", {})

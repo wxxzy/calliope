@@ -59,3 +59,59 @@ class KnowledgeService:
         return graph_store_manager.generate_and_cache_community_names(
             collection_name, communities, chain, world_bible
         )
+
+    @staticmethod
+    def get_scene_entities_info(collection_name: str, text: str):
+        """
+        分析当前场景涉及的实体信息。
+        用于侧边栏挂件展示。
+        """
+        try:
+            G = graph_store_manager.load_graph(collection_name)
+            all_nodes = list(G.nodes())
+            # 简单的关键词提取（未来可升级为 NER）
+            mentioned = [node for node in all_nodes if node.lower() in text.lower()]
+            
+            if not mentioned:
+                return None
+            
+            # 获取派系和缓存名称
+            communities = graph_store_manager.detect_communities(collection_name)
+            cached_names = graph_store_manager.load_cached_community_names(collection_name)
+            
+            entities_data = []
+            conflicts = []
+            
+            # --- 冲突关键词定义 ---
+            negative_keywords = ["敌", "仇", "恨", "杀", "背叛", "战", "对立"]
+
+            for i, entity in enumerate(mentioned):
+                # 查找派系
+                comm_id = next((name for name, nodes in communities.items() if entity in nodes), "未知")
+                comm_name = cached_names.get(comm_id, comm_id)
+                
+                # 获取直接邻居
+                neighbors = list(G.neighbors(entity))
+                relations = []
+                for n in neighbors[:3]: 
+                    r = G[entity][n].get('relation', '关联')
+                    relations.append(f"{r} -> {n}")
+                    
+                    # --- 冲突检测逻辑 (New) ---
+                    # 如果邻居也在当前场上，且关系中包含负面词，记录冲突
+                    if n in mentioned and any(kw in r for keyword in negative_keywords for kw in [keyword]):
+                        conflicts.append(f"【{entity}】与【{n}】存在冲突关系: {r}")
+                
+                entities_data.append({
+                    "name": entity,
+                    "faction": comm_name,
+                    "relations": relations
+                })
+            
+            return {
+                "entities": entities_data,
+                "conflicts": list(set(conflicts)) # 去重
+            }
+        except Exception as e:
+            logger.error(f"获取场景实体信息失败: {e}")
+            return None

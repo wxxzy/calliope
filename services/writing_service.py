@@ -17,26 +17,6 @@ logger = logging.getLogger(__name__)
 
 class WritingService:
     @staticmethod
-    def update_project_bible(state: dict, content: str, full_config: dict):
-        """
-        更新项目世界观设定 (Bible 2.0)。
-        同步更新向量库记忆和知识图谱三元组。
-        """
-        collection_name = state.get("collection_name")
-        
-        # 1. 同步至向量数据库
-        text_splitter = text_splitter_provider.get_text_splitter('default_recursive')
-        vector_store_manager.index_text(collection_name, content, text_splitter, metadata={"source": "world_bible"})
-        
-        # 2. 自动同步至知识图谱 (整合点)
-        from services.knowledge_service import KnowledgeService
-        # 构造图谱提取请求
-        state["text_to_extract"] = content
-        KnowledgeService.update_graph(state)
-        
-        return {"bible_updated": True}
-
-    @staticmethod
     def run_plan(state: dict, writing_style: str, execute_func):
         """执行写作规划逻辑"""
         chain = create_planner_chain(writing_style=writing_style)

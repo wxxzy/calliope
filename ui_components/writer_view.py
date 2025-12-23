@@ -80,11 +80,16 @@ def render_writer_view(full_config, run_step_with_spinner_func):
     # 2. 核心记忆编辑区 (世界观设定)
     with st.container(border=True):
         st.subheader("🧠 核心记忆 (世界观)")
-        st.text_area("在此输入项目的核心设定...", key="world_bible", height=200)
-        if st.button("更新设定并同步图谱"):
-            with st.spinner("正在进行多维同步（向量库 + 知识图谱）..."):
-                if run_step_with_spinner_func("update_bible", "AI 正在建立跨维度记忆连接...", full_config):
-                    st.success("世界观百科已更新！新的人物关系已推送到“图谱”待审列表。")
+        st.text_area("在此输入世界观、人物背景、地理位置等硬设定...", key="world_bible", height=200)
+        
+        if st.button("🚀 更新设定", use_container_width=True):
+            with st.spinner("正在进行多维知识同步..."):
+                result = run_step_with_spinner_func("update_bible", "AI 正在理解并沉淀设定...", full_config)
+                if result and result.get("synced"):
+                    msg = "✅ 世界观已存入向量库！"
+                    if result.get("graph_extracted"):
+                        msg += f" 识别到 {result.get('new_relations_count')} 条新关系，已推送到“图谱”待审。"
+                    st.success(msg)
                     st.rerun()
 
     # 3. 规划步骤 (Planner)

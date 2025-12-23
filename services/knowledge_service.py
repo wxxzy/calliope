@@ -4,11 +4,41 @@
 """
 import logging
 import graph_store_manager
+import vector_store_manager
+import text_splitter_provider
 from chains import create_graph_extraction_chain, create_community_naming_chain, create_critic_chain
 
 logger = logging.getLogger(__name__)
 
 class KnowledgeService:
+    @staticmethod
+    def sync_bible(state: dict, content: str, full_config: dict):
+        """
+        统一同步世界观百科 (Vector + Graph)。
+        这是系统所有“设定”更新的唯一权威入口。
+        """
+        collection_name = state.get("collection_name")
+        if not content: return {"synced": False}
+
+        # 1. 向量库索引
+        try:
+            active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
+            text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id)
+            vector_store_manager.index_text(collection_name, content, text_splitter, metadata={"source": "world_bible"})
+            logger.info(f"Vector sync complete for {collection_name}")
+        except Exception as e:
+            logger.error(f"Vector sync failed: {e}")
+
+        # 2. 图谱提取
+        state["text_to_extract"] = content
+        graph_res = KnowledgeService.update_graph(state)
+        
+        return {
+            "synced": True, 
+            "graph_extracted": graph_res.get("graph_updated", False),
+            "new_relations_count": graph_res.get("extracted_count", 0)
+        }
+
     @staticmethod
     def run_critique(state: dict, writing_style: str, execute_func):
         """执行 AI 评审逻辑"""

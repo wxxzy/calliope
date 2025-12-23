@@ -34,7 +34,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         res = {}
         # 1. 写作相关业务
         if step_name == "update_bible":
-            res = WritingService.update_project_bible(state, state.get("world_bible"), full_config)
+            res = KnowledgeService.sync_bible(state, state.get("world_bible"), full_config)
         elif step_name == "plan":
             res = WritingService.run_plan(state, writing_style_description, _execute_chain)
         elif step_name == "outline":

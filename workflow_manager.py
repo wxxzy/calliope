@@ -48,7 +48,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
 
         # 2. 研究相关业务
         elif step_name == "research":
-            res = ResearchService.run_research(state, writing_style_description, _execute_chain)
+            res = ResearchService.run_research(state, writing_style_description, full_config, _execute_chain)
 
         # 3. 知识相关业务
         elif step_name == "critique":

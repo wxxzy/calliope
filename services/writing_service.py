@@ -62,24 +62,54 @@ class WritingService:
 
     @staticmethod
     def retrieve_for_draft(state: dict, full_config: dict):
-        """为章节撰写检索上下文 (含图谱与向量)"""
+        """
+        为章节撰写检索上下文 (Hybrid RAG 2.0)。
+        融合图谱关系网与向量语义检索。
+        """
+        import graph_store_manager
         collection_name = state.get("collection_name")
         section_to_write = state.get("section_to_write", "")
         
-        # 获取配置
+        # 获取 RAG 配置
         active_re_ranker_id = full_config.get("active_re_ranker_id")
         re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
         rag_config = full_config.get("rag", {})
         
-        # 1. 向量检索
+        # 1. 实体识别与图谱先行 (Entity-First Graph Retrieval)
+        graph_context_doc = ""
+        try:
+            G = graph_store_manager.load_graph(collection_name)
+            # 识别当前章节提到的实体
+            all_nodes = list(G.nodes())
+            mentioned_entities = [node for node in all_nodes if node.lower() in section_to_write.lower()]
+            
+            if mentioned_entities:
+                # 获取 2 步跨度的多跳关系
+                raw_graph_text = graph_store_manager.get_multi_hop_context(collection_name, mentioned_entities, radius=2)
+                if raw_graph_text:
+                    graph_context_doc = f"【知识图谱核心关联 (权威设定)】:\n{raw_graph_text}\n(请确保撰写内容与上述人物/派系关系完全一致)"
+                    logger.info(f"Hybrid RAG: 成功从图谱召回实体 {mentioned_entities} 的关系网。")
+        except Exception as e:
+            logger.error(f"图谱预检索失败: {e}")
+
+        # 2. 向量检索 (Vector Semantic Retrieval)
+        # 优化查询词：如果存在图谱实体，将其加入检索词以增强召回
+        enhanced_query = section_to_write
+        if mentioned_entities:
+            enhanced_query = f"{section_to_write} (相关实体: {', '.join(mentioned_entities)})"
+
         retrieved_docs = retrieve_with_rewriting(
-            collection_name, section_to_write, 
+            collection_name, enhanced_query, 
             rag_config.get("recall_k", 20), 
             rag_config.get("rerank_k", 5), 
             re_ranker
         )
         
-        # 2. 图谱增强 (此处暂留接口，实际由 workflow_manager 协调或在 knowledge_service 处理)
+        # 3. 结果融合 (Merging)
+        # 将图谱上下文作为最高优先级的文档插入最前端
+        if graph_context_doc:
+            retrieved_docs.insert(0, graph_context_doc)
+        
         return {"retrieved_docs": retrieved_docs}
 
     @staticmethod

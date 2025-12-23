@@ -34,19 +34,15 @@ def create_outliner_chain(writing_style: str = ""):
     """
     创建文章大纲生成链。
     结合规划、研究结果及用户需求设计结构。
-    
-    Args:
-        writing_style (str): 写作风格描述。
-    Returns:
-        Runnable: LangChain 可执行对象。
+    使用较低的随机性以确保结构的严谨性。
     """
-    outliner_llm = get_llm("outliner")
+    outliner_llm = get_llm("outliner", temperature=0.4) 
     style_inst = get_writing_style_instruction(writing_style)
     return (
         RunnablePassthrough.assign(
-            plan=RunnablePassthrough(), 
-            user_prompt=RunnablePassthrough(),
-            research_results=RunnablePassthrough(),
+            plan=lambda x: x.get("plan", ""),
+            user_prompt=lambda x: x.get("user_prompt", ""),
+            research_results=lambda x: x.get("research_results", ""),
             writing_style_instruction=lambda x: style_inst,
             refinement_instruction=lambda x: x.get("refinement_instruction", ""),
             outline=lambda x: x.get("outline", "")

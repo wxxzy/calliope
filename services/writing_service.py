@@ -1,31 +1,90 @@
 """
 写作业务服务 (Writing Service)
-处理规划、大纲生成、章节撰写（含 RAG 增强）及全文修订的业务逻辑。
+处理灵感规划（含自动研究）、大纲生成、章节撰写（含 Hybrid RAG）及全文修订。
 """
 import logging
 from chains import (
     create_planner_chain, create_outliner_chain, 
     create_draft_generation_chain, create_revise_generation_chain,
-    create_chapter_summary_chain, retrieve_with_rewriting
+    create_chapter_summary_chain, retrieve_with_rewriting,
+    create_research_chain
 )
 import vector_store_manager
 import text_splitter_provider
 import re_ranker_provider
+import tool_provider
 from custom_exceptions import VectorStoreOperationError
 
 logger = logging.getLogger(__name__)
 
 class WritingService:
+    """
+    核心写作业务类。
+    实现了从初步构思到最终成稿的所有高阶业务逻辑。
+    """
+
     @staticmethod
-    def run_plan(state: dict, writing_style: str, execute_func):
-        """执行写作规划逻辑"""
-        chain = create_planner_chain(writing_style=writing_style)
-        inputs = {
+    def run_plan(state: dict, writing_style: str, full_config: dict, execute_func):
+        """
+        执行“灵感构思”逻辑 (合并了规划与研究)。
+        
+        流程：
+        1. 调用 Planner 生成初步写作计划。
+        2. 自动获取选中的搜索工具。
+        3. 自动调用 Researcher 根据计划进行 Web 并行搜索并总结。
+        4. 将研究资料持久化到项目向量库中。
+        """
+        # --- 步骤 1: 生成写作计划 ---
+        planner_chain = create_planner_chain(writing_style=writing_style)
+        planner_inputs = {
             "user_prompt": state.get("user_prompt"),
             "plan": state.get("plan"),
             "refinement_instruction": state.get("refinement_instruction")
         }
-        return {"plan": execute_func(chain, inputs)}
+        plan_text = execute_func(planner_chain, planner_inputs)
+
+        # --- 步骤 2: 自动进行背景研究 (整合逻辑) ---
+        tool_id = state.get("selected_tool_id", "ddg_default") 
+        search_tool = tool_provider.get_tool(tool_id)
+        
+        research_chain = create_research_chain(search_tool, writing_style=writing_style)
+        research_inputs = {
+            "plan": plan_text,
+            "user_prompt": state.get("user_prompt"),
+            "research_results": None,
+            "refinement_instruction": None
+        }
+        
+        logger.info(f"正在使用工具 '{tool_id}' 进行自动背景研究...")
+        research_text = execute_func(research_chain, research_inputs)
+
+        # --- 步骤 3: 研究知识沉淀 ---
+        if research_text:
+            WritingService._index_research_results(state, research_text, full_config)
+
+        # 同时返回计划和研究摘要，供 UI 更新状态
+        return {
+            "plan": plan_text, 
+            "research_results": research_text 
+        }
+
+    @staticmethod
+    def _index_research_results(state, text, full_config):
+        """内部方法：将自动研究获取的知识打标存入 RAG 库"""
+        try:
+            collection_name = state.get("collection_name")
+            active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
+            text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id) 
+            
+            metadata = {
+                "source": "automated_research",
+                "document_type": "background_material",
+                "project": state.get("project_name")
+            }
+            vector_store_manager.index_text(collection_name, text, text_splitter, metadata=metadata)
+            logger.info("研究资料已自动入库。")
+        except Exception as e:
+            logger.error(f"研究资料入库失败: {e}")
 
     @staticmethod
     def run_outline(state: dict, writing_style: str, execute_func):
@@ -55,28 +114,24 @@ class WritingService:
         re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
         rag_config = full_config.get("rag", {})
         
-        # 1. 实体识别与图谱先行 (Entity-First Graph Retrieval)
+        # 1. 实体识别与图谱先行
         graph_context_doc = ""
         try:
             G = graph_store_manager.load_graph(collection_name)
-            # 识别当前章节提到的实体
             all_nodes = list(G.nodes())
             mentioned_entities = [node for node in all_nodes if node.lower() in section_to_write.lower()]
             
             if mentioned_entities:
-                # 获取 2 步跨度的多跳关系
                 raw_graph_text = graph_store_manager.get_multi_hop_context(collection_name, mentioned_entities, radius=2)
                 if raw_graph_text:
-                    graph_context_doc = f"【知识图谱核心关联 (权威设定)】:\n{raw_graph_text}\n(请确保撰写内容与上述人物/派系关系完全一致)"
-                    logger.info(f"Hybrid RAG: 成功从图谱召回实体 {mentioned_entities} 的关系网。")
+                    graph_context_doc = f"【知识图谱核心关联 (权威设定)】:\n{raw_graph_text}\n(请在撰写时严格遵守上述关系设定)"
         except Exception as e:
             logger.error(f"图谱预检索失败: {e}")
 
-        # 2. 向量检索 (Vector Semantic Retrieval)
-        # 优化查询词：如果存在图谱实体，将其加入检索词以增强召回
+        # 2. 向量检索 (增强查询)
         enhanced_query = section_to_write
         if mentioned_entities:
-            enhanced_query = f"{section_to_write} (相关实体: {', '.join(mentioned_entities)})"
+            enhanced_query = f"{section_to_write} (涉及实体: {', '.join(mentioned_entities)})"
 
         retrieved_docs = retrieve_with_rewriting(
             collection_name, enhanced_query, 
@@ -85,8 +140,6 @@ class WritingService:
             re_ranker
         )
         
-        # 3. 结果融合 (Merging)
-        # 将图谱上下文作为最高优先级的文档插入最前端
         if graph_context_doc:
             retrieved_docs.insert(0, graph_context_doc)
         
@@ -108,7 +161,7 @@ class WritingService:
         
         new_content = execute_func(chain, inputs)
         
-        # 自动摘要与记忆索引逻辑
+        # 自动摘要与记忆索引
         if new_content and not state.get("refinement_instruction"):
             WritingService._index_chapter_summary(state, new_content, full_config)
             
@@ -122,7 +175,7 @@ class WritingService:
             summary = summary_chain.invoke({"chapter_text": content})
             
             active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
-            text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id)
+            text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id) 
             
             metadata = {
                 "project_name": state.get("project_name"),
@@ -131,7 +184,7 @@ class WritingService:
             }
             vector_store_manager.index_text(state.get("collection_name"), summary, text_splitter, metadata=metadata)
         except Exception as e:
-            logger.error(f"索引章节摘要失败: {e}")
+            logger.error(f"索引摘要失败: {e}")
             raise VectorStoreOperationError(f"无法同步记忆库: {e}")
 
     @staticmethod

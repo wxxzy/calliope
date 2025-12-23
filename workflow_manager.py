@@ -9,7 +9,6 @@ from langchain_core.exceptions import OutputParserException
 
 # 引入子服务
 from services.writing_service import WritingService
-from services.research_service import ResearchService
 from services.knowledge_service import KnowledgeService
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         if step_name == "update_bible":
             res = KnowledgeService.sync_bible(state, state.get("world_bible"), full_config)
         elif step_name == "plan":
-            res = WritingService.run_plan(state, writing_style_description, _execute_chain)
+            res = WritingService.run_plan(state, writing_style_description, full_config, _execute_chain)
         elif step_name == "outline":
             res = WritingService.run_outline(state, writing_style_description, _execute_chain)
         elif step_name == "retrieve_for_draft":
@@ -46,11 +45,7 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         elif step_name == "generate_revision":
             res = WritingService.run_revision(state, writing_style_description, _execute_chain)
 
-        # 2. 研究相关业务
-        elif step_name == "research":
-            res = ResearchService.run_research(state, writing_style_description, full_config, _execute_chain)
-
-        # 3. 知识相关业务
+        # 2. 知识相关业务
         elif step_name == "critique":
             res = KnowledgeService.run_critique(state, writing_style_description, _execute_chain)
         elif step_name == "update_graph":

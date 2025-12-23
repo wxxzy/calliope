@@ -92,61 +92,45 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     st.success(msg)
                     st.rerun()
 
-    # 3. 规划步骤 (Planner)
+    # 3. 规划与研究 (Combined Step 1)
     with st.container(border=True):
-        st.subheader("第一步：规划")
+        st.subheader("第一步：灵感构思 (规划+背景研究)")
         st.text_area("请输入您的整体写作需求：", key="user_prompt", height=100)
+        
+        # 将搜索工具选择集成到规划阶段
+        user_tools = tool_provider.get_user_tools_config()
+        st.selectbox("选择辅助研究工具:", options=list(user_tools.keys()), key="selected_tool_id")
 
         if 'plan' not in st.session_state:
-            if st.button("生成写作计划", type="primary", key="generate_plan"):
-                result = run_step_with_spinner_func("plan", "规划师正在构思...", full_config)
-                if result and "plan" in result:
-                    st.session_state.new_plan = result["plan"]
+            if st.button("生成写作计划与研究背景", type="primary", use_container_width=True):
+                result = run_step_with_spinner_func("plan", "规划师正在构思并检索资料...", full_config)
+                # 结果已由 workflow_manager 自动同步到 session_state
+                if result:
                     st.rerun()
         else:
             st.text_area("写作计划", key="plan", height=200)
+            
+            # 显示自动研究的结果 (作为参考)
+            if st.session_state.get("research_results"):
+                with st.expander("🔍 查看同步生成的研究背景", expanded=False):
+                    st.write(st.session_state.research_results)
+
             st.text_input("计划优化指令", key="plan_refinement_instruction")
-            if st.button("迭代优化计划", type="secondary", key="refine_plan"):
+            if st.button("迭代优化计划与资料", type="secondary"):
                 st.session_state.refinement_instruction = st.session_state.plan_refinement_instruction
-                result = run_step_with_spinner_func("plan", "正在根据反馈调整计划...", full_config)
-                if result and "plan" in result:
-                    st.session_state.new_plan = result["plan"]
+                result = run_step_with_spinner_func("plan", "正在重新构思并更新资料...", full_config)
+                if result:
                     st.session_state.clear_specific_refinement = "plan_refinement_instruction"
                     st.rerun()
 
-    # 4. 研究与大纲后续步骤...
     if 'plan' in st.session_state:
-        # 研究环节 (Researcher)
+        # 大纲环节 (Outliner) - 现在是第二步
         with st.container(border=True):
-            st.subheader("第二步：研究")
-            user_tools = tool_provider.get_user_tools_config()
-            st.selectbox("选择搜索工具:", options=list(user_tools.keys()), key="selected_tool_id")
-
-            if 'research_results' not in st.session_state:
-                if st.button("开始研究", type="primary", key="start_research"):
-                    result = run_step_with_spinner_func("research", "正在进行多源并行搜索...", full_config)
-                    if result and "research_results" in result:
-                        st.session_state.new_research_results = result["research_results"]
-                        st.rerun()
-            else:
-                st.text_area("研究摘要", key="research_results", height=200)
-                st.text_input("摘要优化指令", key="research_refinement_instruction")
-                if st.button("迭代优化摘要", type="secondary", key="refine_research"):
-                    st.session_state.refinement_instruction = st.session_state.research_refinement_instruction
-                    result = run_step_with_spinner_func("research", "更新研究焦点...", full_config)
-                    if result and "research_results" in result:
-                        st.session_state.new_research_results = result["research_results"]
-                        st.session_state.clear_specific_refinement = "research_refinement_instruction"
-                        st.rerun()
-
-        # 大纲环节 (Outliner)
-        with st.container(border=True):
-            st.subheader("第三步：大纲")
+            st.subheader("第二步：大纲设计")
             if 'outline' not in st.session_state:
-                if st.button("生成大纲", type="primary", key="generate_outline"):
+                if st.button("生成文章大纲", type="primary", use_container_width=True):
                     result = run_step_with_spinner_func("outline", "大纲师正在规划结构...", full_config)
-                    if result and "outline" in result:
-                        st.session_state.new_outline = result["outline"]
+                    if result:
                         st.rerun()
             else:
                 st.text_area("文章大纲", key="outline", height=400)
@@ -163,7 +147,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                         if "current_critique" in st.session_state: del st.session_state.current_critique
                         st.rerun()
 
-                if st.button("迭代优化大纲", type="secondary", key="refine_outline"):
+                if st.button("迭代优化大纲", type="secondary", key="refine_outline_btn"):
                     st.session_state.refinement_instruction = st.session_state.outline_refinement_instruction
                     result = run_step_with_spinner_func("outline", "正在调整大纲结构...", full_config)
                     if result and "outline" in result:
@@ -180,14 +164,14 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                             st.rerun()
                     if st.session_state.get("current_critique") and st.session_state.get("critique_target_type") == "outline":
                         st.markdown(st.session_state.current_critique)
+                        
                         def adopt_critique_callback():
                             st.session_state.outline_refinement_instruction = f"请参考评审建议：\n{st.session_state.current_critique}"
                             st.session_state.auto_run_outline_refinement = True
+                        
                         st.button("🔧 采纳建议并自动重写", key="refine_outline_with_critique", on_click=adopt_critique_callback)
-
-        # 撰写环节 (Drafter)
         with st.container(border=True):
-            st.subheader("第四步：撰写 (RAG增强)")
+            st.subheader("第三步：正文撰写 (Hybrid RAG 增强)")
             if 'outline_sections' in st.session_state:
                 total_chaps = len(st.session_state.outline_sections)
                 done_chaps = st.session_state.get('drafting_index', 0)
@@ -288,10 +272,10 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                         st.write(draft)
                         st.markdown("---")
 
-    # 5. 修订与成品阶段...
+    # 4. 修订与成品阶段...
     if st.session_state.get("drafting_index", 0) > 0 and st.session_state.get("drafting_index") == len(st.session_state.get("outline_sections", [])):
         with st.container(border=True):
-            st.subheader("第五步：修订")
+            st.subheader("第四步：精修与润色")
             if 'final_manuscript' not in st.session_state:
                 if st.button("开始修订全文 (总编辑介入)", type="primary", key="start_revision"):
                     st.session_state.full_draft = "\n\n".join(st.session_state.drafts)

@@ -4,16 +4,17 @@ models:
     model_name: gpt-4o-mini
     api_key_env: OPENAI_API_KEY
 steps:
-  planner: gemini-2.5-flash
-  critic: gemini-2.5-flash
-  graph_generator: gemini-2.5-flash
+  planner: doubao_seed
+  critic: DeepSeek-V3.2
+  graph_generator: DeepSeek-V3.2
   researcher: DeepSeek-V3.2
   summarizer: doubao_seed
   outliner: doubao_seed
   drafter: DeepSeek-V3.2
-  reviser: gemini-2.5-flash
-  query_rewriter: gemini-2.5-flash
+  reviser: doubao_seed
+  query_rewriter: doubao_seed
   chapter_summarizer: doubao_seed
+  community_namer: doubao_seed
 embeddings:
   my_custom_embedding:
     template: openai

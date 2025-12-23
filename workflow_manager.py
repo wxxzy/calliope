@@ -9,7 +9,7 @@ from chains import (
     retrieve_documents_for_drafting, create_draft_generation_chain,
     retrieve_documents_for_revising, create_revise_generation_chain,
     create_chapter_summary_chain, create_critic_chain,
-    create_graph_extraction_chain
+    create_graph_extraction_chain, create_community_naming_chain
 )
 import tool_provider
 import graph_store_manager

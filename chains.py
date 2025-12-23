@@ -8,7 +8,8 @@ from llm_provider import get_llm
 from prompts import (
     PLANNER_PROMPT, RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT, 
     OUTLINER_PROMPT, DRAFTER_PROMPT, REVISER_PROMPT, QUERY_REWRITER_PROMPT,
-    CHAPTER_SUMMARIZER_PROMPT, CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT
+    CHAPTER_SUMMARIZER_PROMPT, CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT,
+    COMMUNITY_NAMING_PROMPT
 )
 from vector_store_manager import retrieve_context
 import logging
@@ -276,7 +277,7 @@ def retrieve_documents_for_revising(collection_name: str, full_draft: str, recal
 def create_revise_generation_chain(writing_style: str = ""):
     """
     创建根据用户选择的上下文修订全文的链。
-    输入字典需要包含 'user_selected_docs' 键。
+    输入字典需要包含 'user_selected_docs'键。
     """
     reviser_llm = get_llm("reviser", temperature=0.5)
     writing_style_instruction = _get_writing_style_instruction(writing_style)
@@ -331,3 +332,19 @@ def create_graph_extraction_chain():
     )
     
     return extraction_chain
+
+def create_community_naming_chain():
+    """
+    创建并返回“派系命名”步骤的链。
+    用于根据成员名单自动生成派系名称。
+    """
+    # 使用专门的 'community_namer' 角色，提升命名的针对性
+    llm = get_llm("community_namer", temperature=0.3) 
+    
+    naming_chain = (
+        COMMUNITY_NAMING_PROMPT 
+        | llm 
+        | StrOutputParser()
+    )
+    
+    return naming_chain

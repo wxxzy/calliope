@@ -49,6 +49,7 @@ steps:
   reviser: doubao_seed
   query_rewriter: gemini-2.0-flash
   chapter_summarizer: doubao_seed
+  community_namer: gemini-2.0-flash
 embeddings:
   openai_embedding:
     template: openai

@@ -177,22 +177,57 @@ def get_multi_hop_context(collection_name: str, entities: List[str], radius: int
 
 def detect_communities(collection_name: str) -> Dict[str, List[str]]:
     """
-    使用社区发现算法识别实体派系。
+    使用 Leiden 算法识别实体派系。
+    相比原来的贪婪算法，Leiden 划分更精准、稳定且内部连通性更好。
     """
     G = load_graph(collection_name)
-    if G.number_of_nodes() < 2 or G.number_of_edges() < 1:
+    if G.number_of_nodes() < 2:
         return {}
 
     try:
-        from networkx.algorithms import community
-        # 使用贪婪模组度算法
-        communities_generator = community.greedy_modularity_communities(G)
+        # 尝试使用高级的 Leiden 算法 (需要 leidenalg 和 igraph)
+        import igraph as ig
+        import leidenalg
+
+        # 1. 转换 NetworkX 图为 igraph 对象
+        # 将节点索引化
+        node_list = list(G.nodes())
+        node_to_idx = {node: i for i, node in enumerate(node_list)}
+        
+        edges = []
+        for u, v in G.edges():
+            edges.append((node_to_idx[u], node_to_idx[v]))
+        
+        ig_graph = ig.Graph(n=len(node_list), edges=edges)
+        
+        # 2. 执行 Leiden 算法
+        # 使用 ModularityVertexPartition (模组度划分)
+        partition = leidenalg.find_partition(ig_graph, leidenalg.ModularityVertexPartition)
+        
+        # 3. 解析结果
         result = {}
-        for i, comm in enumerate(communities_generator):
-            result[f"派系_{i+1}"] = list(comm)
+        for i, community_nodes_indices in enumerate(partition):
+            # 将索引转换回原始节点名称
+            comm_nodes = [node_list[idx] for idx in community_nodes_indices]
+            result[f"派系_{i+1}"] = comm_nodes
+        
+        logger.info(f"Leiden 算法执行成功，发现 {len(result)} 个派系。")
         return result
+
+    except ImportError:
+        logger.warning("未找到 leidenalg 或 igraph，回退到基础算法。请运行 `pip install leidenalg python-igraph` 获得更好的分组效果。")
+        # 回退逻辑 (Greedy Modularity)
+        try:
+            from networkx.algorithms import community
+            communities_generator = community.greedy_modularity_communities(G)
+            result = {}
+            for i, comm in enumerate(communities_generator):
+                result[f"派系_{i+1}"] = list(comm)
+            return result
+        except Exception:
+            return {}
     except Exception as e:
-        logger.warning(f"社区发现失败: {e}")
+        logger.error(f"Leiden 算法执行失败: {e}")
         return {}
 
 def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str, str, str]]) -> List[Dict]:
@@ -239,6 +274,65 @@ def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str,
                     })
                     
     return conflicts
+
+def get_community_names_path(collection_name: str) -> str:
+    """获取派系名称缓存路径"""
+    ensure_graph_dir()
+    safe_name = "".join([c for c in collection_name if c.isalnum() or c in ('_', '-')])
+    return os.path.join(GRAPH_DIR, f"{safe_name}_community_names.json")
+
+def load_cached_community_names(collection_name: str) -> Dict[str, str]:
+    """加载缓存的派系名称"""
+    path = get_community_names_path(collection_name)
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_community_names(collection_name: str, names: Dict[str, str]):
+    """保存派系名称到缓存"""
+    path = get_community_names_path(collection_name)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(names, f, ensure_ascii=False, indent=2)
+
+def generate_and_cache_community_names(collection_name: str, communities: Dict[str, List[str]], naming_chain, world_bible: str):
+    """
+    调用 AI 为所有派系命名，并存入缓存。
+    确保命名的唯一性。
+    """
+    cached_names = {}
+    used_pretty_names = []
+    
+    context = world_bible[:1000] if world_bible else "无背景设定"
+    
+    for temp_id, members in communities.items():
+        try:
+            # 注入已使用的名称，防止重复
+            input_data = {
+                "members": ", ".join(members),
+                "context": f"{context}\n\n注意：以下名称已被其他派系占用，请不要重复使用：{', '.join(used_pretty_names)}"
+            }
+            pretty_name = naming_chain.invoke(input_data)
+            pretty_name = pretty_name.strip().strip('"').strip("'")
+            
+            # 简单的排重逻辑：如果 AI 还是给了一样的，加个后缀
+            final_name = pretty_name
+            count = 1
+            while final_name in used_pretty_names:
+                final_name = f"{pretty_name}_{count}"
+                count += 1
+            
+            cached_names[temp_id] = final_name
+            used_pretty_names.append(final_name)
+        except Exception as e:
+            logger.error(f"命名派系 {temp_id} 失败: {e}")
+            cached_names[temp_id] = temp_id # 兜底用原始 ID
+            
+    save_community_names(collection_name, cached_names)
+    return cached_names
 
 def get_graph_stats(collection_name: str) -> Dict:
 # ... (保持不变) ...

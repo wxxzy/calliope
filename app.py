@@ -656,6 +656,7 @@ if __name__ == "__main__":
         st.markdown("---")
         st.subheader("🕸️ 当前核心关系图")
         G = graph_store_manager.load_graph(collection_name)
+        communities = {} # 初始化变量，防止 NameError
         if G.number_of_nodes() > 0:
             from streamlit_agraph import agraph, Node, Edge, Config
             
@@ -710,13 +711,31 @@ if __name__ == "__main__":
             # 4. 渲染
             agraph(nodes=nodes, edges=edges, config=config)
 
-            # --- 派系展示 ---
-            if communities:
-                st.subheader("👥 自动识别的派系/社区")
-                cols = st.columns(len(communities))
-                for i, (name, nodes_list) in enumerate(communities.items()):
-                    cols[i].markdown(f"**{name}**")
-                    cols[i].write(", ".join(nodes_list))
+        # --- 派系展示 ---
+        if communities:
+            st.subheader("👥 识别到的势力派系")
+            
+            # 从缓存加载名字
+            cached_names = graph_store_manager.load_cached_community_names(collection_name)
+            
+            if st.button("🎭 重新分析并命名派系", help="使用 AI 根据当前关系网重新划分阵营并起名"):
+                naming_chain = workflow_manager.create_community_naming_chain()
+                with st.spinner("AI 正在深度分析势力分布..."):
+                    cached_names = graph_store_manager.generate_and_cache_community_names(
+                        collection_name, 
+                        communities, 
+                        naming_chain, 
+                        st.session_state.world_bible
+                    )
+                st.success("派系分析与命名完成！")
+                st.rerun()
+
+            cols = st.columns(len(communities))
+            for i, (temp_id, nodes_list) in enumerate(communities.items()):
+                # 优先显示缓存的名字，如果没有则显示原始 ID
+                display_name = cached_names.get(temp_id, temp_id)
+                cols[i].markdown(f"**{display_name}**")
+                cols[i].write(", ".join(nodes_list))
 
             # --- 原始数据表格与在线编辑 ---
             st.markdown("---")

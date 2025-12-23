@@ -28,4 +28,6 @@ semantic-chunking>=0.1.1
 streamlit-agraph>=0.0.45
 networkx>=3.0
 graphviz>=0.20
+leidenalg>=0.10.0
+python-igraph>=0.10.0
 

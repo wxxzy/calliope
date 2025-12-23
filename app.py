@@ -539,10 +539,58 @@ if __name__ == "__main__":
 
         # 显示最终成品
         if 'final_manuscript' in st.session_state:
+            import export_manager
             with st.container(border=True):
                 st.header("🎉 最终成品")
                 st.markdown(st.session_state.final_manuscript)
-                st.download_button("下载最终稿件", st.session_state.final_manuscript, file_name=f"{st.session_state.collection_name}_final.md")
+                
+                st.subheader("📦 导出作品")
+                project_title = st.session_state.get('project_name', '未命名项目')
+                manuscript_content = st.session_state.final_manuscript
+                
+                col_ex1, col_ex2, col_ex3 = st.columns(3)
+                
+                with col_ex1:
+                    # Markdown 导出 (String)
+                    md_text = export_manager.export_as_markdown(project_title, manuscript_content)
+                    st.download_button(
+                        label="📥 导出为 Markdown",
+                        data=md_text,
+                        file_name=f"{project_title}.md",
+                        mime="text/markdown",
+                        use_container_width=True,
+                        key="btn_export_md_v2"
+                    )
+                
+                with col_ex2:
+                    # PDF 导出 (Bytes)
+                    try:
+                        pdf_bytes = export_manager.export_as_pdf(project_title, manuscript_content)
+                        st.download_button(
+                            label="📥 导出为 PDF",
+                            data=pdf_bytes,
+                            file_name=f"{project_title}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="btn_export_pdf_v2"
+                        )
+                    except Exception as e:
+                        st.error(f"PDF 导出失败: {e}")
+                
+                with col_ex3:
+                    # EPUB 导出 (Bytes)
+                    try:
+                        epub_bytes = export_manager.export_as_epub(project_title, manuscript_content)
+                        st.download_button(
+                            label="📥 导出为 EPUB",
+                            data=epub_bytes,
+                            file_name=f"{project_title}.epub",
+                            mime="application/epub+zip",
+                            use_container_width=True,
+                            key="btn_export_epub_v2"
+                        )
+                    except Exception as e:
+                        st.error(f"EPUB 导出失败: {e}")
 
 
     with tab2:

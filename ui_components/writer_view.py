@@ -49,11 +49,11 @@ def render_writer_view(full_config, run_step_with_spinner_func):
     with st.container(border=True):
         st.subheader("🧠 核心记忆 (世界观)")
         st.text_area("在此输入项目的核心设定...", key="world_bible", height=200)
-        if st.button("更新核心记忆", key="update_world_bible"):
-            with st.spinner("正在同步至向量库并提取知识点..."):
-                text_splitter = text_splitter_provider.get_text_splitter('default_recursive')
-                vector_store_manager.index_text(collection_name, st.session_state.world_bible, text_splitter, metadata={"source": "world_bible"})
-            st.success("核心记忆已更新！")
+        if st.button("更新设定并同步图谱"):
+            with st.spinner("正在进行多维同步（向量库 + 知识图谱）..."):
+                if run_step_with_spinner_func("update_bible", "AI 正在建立跨维度记忆连接...", full_config):
+                    st.success("世界观百科已更新！新的人物关系已推送到“图谱”待审列表。")
+                    st.rerun()
 
     # 3. 规划步骤 (Planner)
     with st.container(border=True):

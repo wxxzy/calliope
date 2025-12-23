@@ -31,33 +31,40 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         return chain.invoke(inputs)
 
     try:
+        res = {}
         # 1. 写作相关业务
-        if step_name == "plan":
-            return WritingService.run_plan(state, writing_style_description, _execute_chain)
+        if step_name == "update_bible":
+            res = WritingService.update_project_bible(state, state.get("world_bible"), full_config)
+        elif step_name == "plan":
+            res = WritingService.run_plan(state, writing_style_description, _execute_chain)
         elif step_name == "outline":
-            return WritingService.run_outline(state, writing_style_description, _execute_chain)
+            res = WritingService.run_outline(state, writing_style_description, _execute_chain)
         elif step_name == "retrieve_for_draft":
-            # 注意：检索目前返回字典，由 Service 处理
-            return WritingService.retrieve_for_draft(state, full_config)
+            res = WritingService.retrieve_for_draft(state, full_config)
         elif step_name == "generate_draft":
-            return WritingService.generate_draft(state, writing_style_description, full_config, _execute_chain)
+            res = WritingService.generate_draft(state, writing_style_description, full_config, _execute_chain)
         elif step_name == "generate_revision":
-            return WritingService.run_revision(state, writing_style_description, _execute_chain)
+            res = WritingService.run_revision(state, writing_style_description, _execute_chain)
 
         # 2. 研究相关业务
         elif step_name == "research":
-            return ResearchService.run_research(state, writing_style_description, _execute_chain)
+            res = ResearchService.run_research(state, writing_style_description, _execute_chain)
 
         # 3. 知识相关业务
         elif step_name == "critique":
-            return KnowledgeService.run_critique(state, writing_style_description, _execute_chain)
+            res = KnowledgeService.run_critique(state, writing_style_description, _execute_chain)
         elif step_name == "update_graph":
-            return KnowledgeService.update_graph(state)
+            res = KnowledgeService.update_graph(state)
         elif step_name == "run_naming":
-            return KnowledgeService.run_naming(state, state.get("collection_name"), state.get("communities_for_naming", {}))
+            res = KnowledgeService.run_naming(state, state.get("collection_name"), state.get("communities_for_naming", {}))
         
         else:
             raise ValueError(f"未知的步骤名称: {step_name}")
+
+        # 自动同步结果到状态字典 (统一状态处理逻辑)
+        if isinstance(res, dict):
+            state.update(res)
+        return res
 
     except Exception as e:
         # 统一的错误处理逻辑 (保持原有健壮性)

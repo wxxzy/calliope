@@ -27,19 +27,28 @@ class KnowledgeService:
     def update_graph(state: dict):
         """执行图谱自动提取逻辑"""
         text = state.get("text_to_extract", "")
-        if not text: return {"graph_updated": False}
+        if not text: 
+            logger.warning("No text to extract for graph.")
+            return {"graph_updated": False}
         
         chain = create_graph_extraction_chain()
         try:
             triplets = chain.invoke({"text": text})
             if triplets and isinstance(triplets, list):
-                # 依据 Phase 3 逻辑：推送到待审列表
+                # 显式获取并更新 state 字典
                 current_pending = state.get("pending_triplets", [])
+                new_count = 0
                 for t in triplets:
-                    if t not in current_pending: current_pending.append(t)
-                return {"graph_updated": True, "pending_triplets": current_pending}
+                    if t not in current_pending: 
+                        current_pending.append(t)
+                        new_count += 1
+                
+                # 关键修复：显式赋值写回 state
+                state["pending_triplets"] = current_pending
+                logger.info(f"成功提取 {new_count} 条新关系，待审总数: {len(current_pending)}")
+                return {"graph_updated": True, "extracted_count": new_count}
         except Exception as e:
-            logger.error(f"图谱提取失败: {e}")
+            logger.error(f"图谱提取失败: {e}", exc_info=True)
         return {"graph_updated": False}
 
     @staticmethod

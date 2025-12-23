@@ -1,0 +1,94 @@
+import streamlit as st
+import logging
+import re
+from datetime import datetime
+from config import load_environment
+import config_manager
+import vector_store_manager
+import workflow_manager
+import state_manager
+import logger_config
+from custom_exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError
+
+# 引入 UI 组件
+from ui_components.writer_view import render_writer_view
+from ui_components.explorer_view import render_explorer_view
+from ui_components.graph_view import render_graph_view
+from ui_components.config_view import render_config_view
+from core.project_manager import ProjectManager
+
+# --- 初始化 ---
+load_environment()
+logger_config.setup_logging()
+app_logger = logging.getLogger(__name__)
+
+st.set_page_config(page_title="Calliope AI 写作", page_icon="📚", layout="wide")
+
+# 定义需要持久化保存的 Session State 键名
+SAVE_KEYS = [
+    'project_name', 'collection_name', 'world_bible', 'plan', 
+    'research_results', 'outline', 'drafts', 'drafting_index', 
+    'final_manuscript', 'outline_sections', 'user_prompt', 
+    'selected_tool_id', 'full_draft', 'project_writing_style_id', 
+    'project_writing_style_description', 'retrieved_docs',
+    'current_critique', 'critique_target_type'
+]
+
+def reset_project_state():
+    """重置特定项目相关的状态"""
+    keys_to_reset = SAVE_KEYS + ['pending_triplets']
+    for key in keys_to_reset:
+        if key in st.session_state: del st.session_state[key]
+
+def save_and_snapshot():
+    """统一执行保存和创建快照的逻辑"""
+    if 'collection_name' in st.session_state:
+        # 1. 内存同步到磁盘 (Save)
+        data_to_save = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
+        if state_manager.save_state_to_file(st.session_state.collection_name, data_to_save):
+            # 2. 创建备份副本 (Snapshot)
+            ProjectManager.create_snapshot(st.session_state.collection_name)
+            st.session_state.last_save_time = datetime.now().strftime("%H:%M:%S")
+            return True
+    return False
+
+def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
+    """带 Spinner 的步骤运行包装器 (传递给组件使用)"""
+    style_desc = st.session_state.get('project_writing_style_description', '')
+    output_placeholder = st.empty()
+    full_response = ""
+
+    def stream_callback(chunk):
+        nonlocal full_response
+        full_response += chunk
+        output_placeholder.markdown(full_response + "▌")
+
+    with st.spinner(spinner_text):
+        try:
+            result = workflow_manager.run_step(
+                step_name, st.session_state, full_config, style_desc, stream_callback=stream_callback
+            )
+            if full_response: output_placeholder.markdown(full_response)
+            else: output_placeholder.empty()
+            
+            # --- 自动保存逻辑 ---
+            # 定义哪些步骤成功后需要自动保存
+            critical_steps = ["plan", "outline", "generate_draft", "generate_revision", "update_bible"]
+            if step_name in critical_steps:
+                save_and_snapshot()
+                st.toast(f"✅ 进度已自动保存并创建快照 ({st.session_state.last_save_time})")
+
+            st.success(f"步骤 '{step_name}' 完成！")
+            return result
+        except (LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError) as e:
+            output_placeholder.empty()
+            st.error(str(e))
+            return None
+        except Exception as e:
+            output_placeholder.empty()
+            st.error(f"未知错误: {e}")
+            app_logger.error(f"Error in {step_name}: {e}", exc_info=True)
+            return None
+
+def main():
+# ... (main 函数的剩余部分我将保留) ...

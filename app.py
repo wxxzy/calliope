@@ -1,6 +1,7 @@
 import streamlit as st
 import logging
 import re
+from datetime import datetime
 from config import load_environment
 import config_manager
 import vector_store_manager
@@ -14,6 +15,7 @@ from ui_components.writer_view import render_writer_view
 from ui_components.explorer_view import render_explorer_view
 from ui_components.graph_view import render_graph_view
 from ui_components.config_view import render_config_view
+from core.project_manager import ProjectManager
 
 # --- 初始化 ---
 load_environment()
@@ -22,16 +24,33 @@ app_logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Calliope AI 写作", page_icon="📚", layout="wide")
 
+# 定义需要持久化保存的 Session State 键名
+SAVE_KEYS = [
+    'project_name', 'collection_name', 'world_bible', 'plan', 
+    'research_results', 'outline', 'drafts', 'drafting_index', 
+    'final_manuscript', 'outline_sections', 'user_prompt', 
+    'selected_tool_id', 'full_draft', 'project_writing_style_id', 
+    'project_writing_style_description', 'retrieved_docs',
+    'current_critique', 'critique_target_type'
+]
+
 def reset_project_state():
     """重置特定项目相关的状态"""
-    keys_to_reset = [
-        'world_bible', 'plan', 'research_results', 'outline', 'drafts', 
-        'drafting_index', 'final_manuscript', 'outline_sections',
-        'project_writing_style_id', 'project_writing_style_description',
-        'current_critique', 'pending_triplets'
-    ]
+    keys_to_reset = SAVE_KEYS + ['pending_triplets']
     for key in keys_to_reset:
         if key in st.session_state: del st.session_state[key]
+
+def save_and_snapshot():
+    """统一执行保存和创建快照的逻辑"""
+    if 'collection_name' in st.session_state:
+        # 1. 内存同步到磁盘 (Save)
+        data_to_save = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
+        if state_manager.save_state_to_file(st.session_state.collection_name, data_to_save):
+            # 2. 创建备份副本 (Snapshot)
+            ProjectManager.create_snapshot(st.session_state.collection_name)
+            st.session_state.last_save_time = datetime.now().strftime("%H:%M:%S")
+            return True
+    return False
 
 def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
     """带 Spinner 的步骤运行包装器 (传递给组件使用)"""
@@ -51,6 +70,13 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             )
             if full_response: output_placeholder.markdown(full_response)
             else: output_placeholder.empty()
+            
+            # --- 自动保存逻辑 ---
+            critical_steps = ["plan", "outline", "generate_draft", "generate_revision", "update_bible"]
+            if step_name in critical_steps:
+                save_and_snapshot()
+                st.toast(f"✅ 进度已自动保存并创建快照 ({st.session_state.last_save_time})")
+
             st.success(f"步骤 '{step_name}' 完成！")
             return result
         except (LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError) as e:
@@ -62,16 +88,6 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             st.error(f"未知错误: {e}")
             app_logger.error(f"Error in {step_name}: {e}", exc_info=True)
             return None
-
-# 定义需要持久化保存的 Session State 键名
-SAVE_KEYS = [
-    'project_name', 'collection_name', 'world_bible', 'plan', 
-    'research_results', 'outline', 'drafts', 'drafting_index', 
-    'final_manuscript', 'outline_sections', 'user_prompt', 
-    'selected_tool_id', 'full_draft', 'project_writing_style_id', 
-    'project_writing_style_description', 'retrieved_docs',
-    'current_critique', 'critique_target_type'
-]
 
 def main():
     full_config = config_manager.load_config()
@@ -133,13 +149,14 @@ def main():
             c1.metric("章节", chaps)
             c2.metric("字数", words)
             
-            if st.button("💾 保存进度", type="primary", use_container_width=True):
-                # 解耦后的字典保存
-                data_to_save = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
-                if state_manager.save_state_to_file(st.session_state.collection_name, data_to_save):
-                    st.toast("✅ 进度已保存至磁盘")
+            if st.session_state.get("last_save_time"):
+                st.caption(f"⏱️ 上次自动保存: {st.session_state.last_save_time}")
+
+            if st.button("💾 手动保存并创建快照", type="primary", use_container_width=True):
+                if save_and_snapshot():
+                    st.toast("✅ 快照已手动生成")
                 else:
-                    st.error("保存失败，请检查日志")
+                    st.error("保存失败")
 
     # --- 主界面入口 ---
     if 'project_name' not in st.session_state:

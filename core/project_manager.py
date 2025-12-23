@@ -9,15 +9,60 @@ import vector_store_manager
 import graph_store_manager
 import state_manager
 import networkx as nx
+import shutil
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+SNAPSHOT_DIR = "data/snapshots"
+
 class ProjectManager:
     """
-    项目管理器类
-    封装了项目的创建、列出、保存和删除等原子操作。
+    统一管理项目的生命周期和多维存储资产。
+    协调 JSON 状态、ChromaDB 向量库和 NetworkX 关系图。
     """
     
+    @staticmethod
+    def create_snapshot(internal_name: str):
+        """
+        为项目创建时间戳快照。
+        """
+        os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+        source_path = os.path.join(state_manager.PROJECT_STATE_DIR, f"{internal_name}.json")
+        
+        if not os.path.exists(source_path):
+            return False
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target_path = os.path.join(SNAPSHOT_DIR, f"{internal_name}_{timestamp}.json")
+        
+        try:
+            shutil.copy2(source_path, target_path)
+            logger.info(f"Snapshot created: {target_path}")
+            # 自动清理旧快照
+            ProjectManager.cleanup_snapshots(internal_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create snapshot: {e}")
+            return False
+
+    @staticmethod
+    def cleanup_snapshots(internal_name: str, keep_count: int = 10):
+        """
+        清理旧快照，只保留最近的 10 份。
+        """
+        try:
+            if not os.path.exists(SNAPSHOT_DIR): return
+            files = [f for f in os.listdir(SNAPSHOT_DIR) if f.startswith(internal_name) and f.endswith(".json")]
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(SNAPSHOT_DIR, x)), reverse=True)
+            
+            if len(files) > keep_count:
+                for old_file in files[keep_count:]:
+                    os.remove(os.path.join(SNAPSHOT_DIR, old_file))
+                logger.info(f"已清理旧快照。")
+        except Exception as e:
+            logger.error(f"Snapshot cleanup failed: {e}")
+
     @staticmethod
     def list_projects():
         """

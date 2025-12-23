@@ -157,6 +157,22 @@ def main():
                     st.toast("✅ 快照已手动生成")
                 else:
                     st.error("保存失败")
+            
+            # --- 危险区域: 删除项目 (New) ---
+            st.markdown("---")
+            with st.expander("☢️ 危险区域", expanded=False):
+                st.warning("删除操作不可撤销，将清除所有文字、记忆和图谱。")
+                confirm_delete = st.checkbox("我确定要彻底删除本项目", key="confirm_delete_check")
+                if confirm_delete:
+                    if st.button("🔥 立即彻底删除", type="secondary", use_container_width=True):
+                        col_to_del = st.session_state.collection_name
+                        ProjectManager.delete_project(col_to_del)
+                        st.success(f"项目 {col_to_del} 已清理。")
+                        reset_project_state()
+                        # 强行清理关键标识以返回初始界面
+                        if 'project_name' in st.session_state: del st.session_state.project_name
+                        if 'collection_name' in st.session_state: del st.session_state.collection_name
+                        st.rerun()
 
     # --- 主界面入口 ---
     if 'project_name' not in st.session_state:

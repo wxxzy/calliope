@@ -47,24 +47,28 @@ def get_or_create_collection(collection_name: str):
     logger.info(f"ChromaDB集合 '{collection_name}' 已准备就绪。")
     return vectorstore
 
+def delete_collection(collection_name: str):
+    """
+    彻底删除一个集合。
+    """
+    client = get_chroma_client()
+    try:
+        # 检查是否存在
+        collections = client.list_collections()
+        if any(c.name == collection_name for c in collections):
+            client.delete_collection(name=collection_name)
+            logger.info(f"ChromaDB 集合 '{collection_name}' 已彻底删除。")
+            return True
+        else:
+            logger.info(f"集合 '{collection_name}' 不存在，跳过删除。")
+            return False
+    except Exception as e:
+        logger.error(f"删除集合 '{collection_name}' 失败: {e}", exc_info=True)
+        return False
+
 def reset_collection(collection_name: str):
     """重置（删除并重建）一个集合。"""
-    client = get_chroma_client()
-    
-    # 检查集合是否存在
-    collections = client.list_collections()
-    collection_exists = any(c.name == collection_name for c in collections)
-    
-    if collection_exists:
-        try:
-            client.delete_collection(name=collection_name)
-            logger.info(f"集合 '{collection_name}' 已被删除。")
-        except Exception as e:
-            logger.error(f"尝试删除集合 '{collection_name}' 时发生错误: {e}", exc_info=True)
-            # 即使删除失败，也继续尝试创建，get_or_create_collection是幂等的
-    else:
-        logger.info(f"集合 '{collection_name}' 不存在，无需删除。")
-        
+    delete_collection(collection_name)
     return get_or_create_collection(collection_name)
 
 

@@ -133,7 +133,10 @@ class ProjectManager:
         Args:
             internal_name (str): 要删除的项目内部名称。
         """
-        # 1. 删除图谱数据文件
+        # 1. 删除向量库集合 (New)
+        vector_store_manager.delete_collection(internal_name)
+
+        # 2. 删除图谱数据文件
         graph_path = graph_store_manager.get_graph_path(internal_name)
         if os.path.exists(graph_path): os.remove(graph_path)
         

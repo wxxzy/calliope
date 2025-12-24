@@ -1,4 +1,5 @@
-"""写作业务服务 (Writing Service)
+"""
+写作业务服务 (Writing Service)
 处理灵感规划（含自动研究）、大纲生成、章节撰写（含 Hybrid RAG 2.0）及全文修订。
 """
 import logging
@@ -12,21 +13,16 @@ import vector_store_manager
 import text_splitter_provider
 import re_ranker_provider
 import tool_provider
+from core.schemas import WritingResult
 from custom_exceptions import VectorStoreOperationError
 
 logger = logging.getLogger(__name__)
 
 class WritingService:
-    """
-    核心写作业务类。
-    实现了从初步构思到最终成稿的所有高阶业务逻辑。
-    """
-
     @staticmethod
-    def run_plan(state: dict, writing_style: str, full_config: dict, execute_func):
-        """
-        执行“灵感构思”逻辑 (合并了规划与研究)。
-        """
+    def run_plan(state: dict, writing_style: str, full_config: dict, execute_func) -> WritingResult:
+        """执行“灵感构思”逻辑。不再修改 state，仅返回结果对象。"""
+        # 1. 生成计划
         planner_chain = create_planner_chain(writing_style=writing_style)
         planner_inputs = {
             "user_prompt": state.get("user_prompt"),
@@ -35,9 +31,9 @@ class WritingService:
         }
         plan_text = execute_func(planner_chain, planner_inputs)
 
+        # 2. 自动研究
         tool_id = state.get("selected_tool_id", "ddg_default") 
         search_tool = tool_provider.get_tool(tool_id)
-        
         research_chain = create_research_chain(search_tool, writing_style=writing_style)
         research_inputs = {
             "plan": plan_text,
@@ -45,39 +41,17 @@ class WritingService:
             "research_results": None,
             "refinement_instruction": None
         }
-        
-        logger.info(f"正在使用工具 '{tool_id}' 进行自动背景研究...")
         research_text = execute_func(research_chain, research_inputs)
 
+        # 3. 知识沉淀
         if research_text:
             WritingService._index_research_results(state, research_text, full_config)
 
-        return {
-            "plan": plan_text, 
-            "research_results": research_text 
-        }
+        return WritingResult(plan=plan_text, research_results=research_text)
 
     @staticmethod
-    def _index_research_results(state, text, full_config):
-        """内部方法：将自动研究获取的知识打标存入 RAG 库"""
-        try:
-            collection_name = state.get("collection_name")
-            active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
-            text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id) 
-            
-            metadata = {
-                "source": "automated_research",
-                "document_type": "background_material",
-                "project": state.get("project_name")
-            }
-            vector_store_manager.index_text(collection_name, text, text_splitter, metadata=metadata)
-            logger.info("研究资料已自动入库。")
-        except Exception as e:
-            logger.error(f"研究资料入库失败: {e}")
-
-    @staticmethod
-    def run_outline(state: dict, writing_style: str, execute_func):
-        """执行大纲生成逻辑"""
+    def run_outline(state: dict, writing_style: str, execute_func) -> WritingResult:
+        """生成大纲逻辑"""
         chain = create_outliner_chain(writing_style=writing_style)
         inputs = {
             "plan": state.get("plan"),
@@ -86,26 +60,59 @@ class WritingService:
             "outline": state.get("outline"),
             "refinement_instruction": state.get("refinement_instruction")
         }
-        return {"outline": execute_func(chain, inputs)}
+        res_text = execute_func(chain, inputs)
+        return WritingResult(outline=res_text)
 
     @staticmethod
-    def retrieve_for_draft(state: dict, full_config: dict):
+    def generate_draft(state: dict, writing_style: str, full_config: dict, execute_func) -> WritingResult:
+        """生成章节内容并自动摘要审计"""
+        chain = create_draft_generation_chain(writing_style=writing_style)
+        inputs = {
+            "user_prompt": state.get("user_prompt"),
+            "research_results": state.get("research_results"),
+            "outline": state.get("outline"),
+            "section_to_write": state.get("section_to_write"),
+            "user_selected_docs": state.get("user_selected_docs", []),
+            "previous_chapter_draft": state.get("current_chapter_draft"),
+            "refinement_instruction": state.get("refinement_instruction")
+        }
+        new_content = execute_func(chain, inputs)
+        
+        warning = None
+        if new_content and not state.get("refinement_instruction"):
+            WritingService._index_chapter_summary(state, new_content, full_config)
+            from services.knowledge_service import KnowledgeService
+            warning = KnowledgeService.run_consistency_check(state.get("collection_name"), new_content)
+            if warning == "PASS": warning = None
+            
+        return WritingResult(new_draft_content=new_content, consistency_warning=warning)
+
+    @staticmethod
+    def run_revision(state: dict, writing_style: str, execute_func) -> WritingResult:
+        """全文修订逻辑"""
+        chain = create_revise_generation_chain(writing_style=writing_style)
+        inputs = {
+            "plan": state.get("plan"),
+            "outline": state.get("outline"),
+            "full_draft": state.get("full_draft"),
+            "user_selected_docs": state.get("user_selected_docs", [])
+        }
+        return WritingResult(final_manuscript=execute_func(chain, inputs))
+
+    @staticmethod
+    def retrieve_for_draft(state: dict, full_config: dict) -> WritingResult:
         """
         为章节撰写检索上下文 (Tiered Memory + Hybrid RAG 2.0)。
-        
-        策略：
-        1. Graph Context: 图谱实体关联 (2步邻域)。
-        2. Strong Memory: 强制包含最近 3 章的摘要 (确保即时连贯)。
-        3. Weak Memory: 通过 RAG 检索更早章节的摘要 (长线召回)。
-        4. Bible Context: 检索最新的世界观设定。
+        实现真正的分层记忆检索。
         """
         import graph_store_manager
+        from core.schemas import WritingResult # 局部导入以避免潜在循环
+        
         collection_name = state.get("collection_name")
         section_to_write = state.get("section_to_write", "")
         current_idx = state.get("drafting_index", 0) + 1 
         
-        active_re_ranker_id = full_config.get("active_re_ranker_id")
-        re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
+        re_ranker = re_ranker_provider.get_re_ranker(full_config.get("active_re_ranker_id"))
         rag_config = full_config.get("rag", {})
         
         all_context_docs = []
@@ -117,7 +124,7 @@ class WritingService:
             if mentioned_entities:
                 raw_graph_text = graph_store_manager.get_multi_hop_context(collection_name, mentioned_entities, radius=2)
                 if raw_graph_text:
-                    all_context_docs.append(f"【知识图谱核心关联】:\n{raw_graph_text}")
+                    all_context_docs.append(f"【知识图谱核心关联设定】:\n{raw_graph_text}")
         except Exception as e:
             logger.error(f"图谱预检索失败: {e}")
 
@@ -147,7 +154,6 @@ class WritingService:
                 ]
             }
             if current_idx > 3:
-                # 增强查询词，加入涉及实体
                 search_query = f"{section_to_write} (涉及实体: {', '.join(mentioned_entities)})" if mentioned_entities else section_to_write
                 rag_results = retrieve_with_rewriting(
                     collection_name, search_query, 
@@ -157,7 +163,7 @@ class WritingService:
                     filter_dict=weak_filter
                 )
                 if rag_results:
-                    all_context_docs.append("【远期相关剧情参考】:\n" + "\n---".join(rag_results))
+                    all_context_docs.append("【远期剧情召回参考】:\n" + "\n---\n".join(rag_results))
         except Exception as e:
             logger.error(f"弱记忆 RAG 失败: {e}")
 
@@ -170,81 +176,24 @@ class WritingService:
                 filter_dict=bible_filter
             )
             if bible_results:
-                all_context_docs.append("【世界观相关核心设定】:\n" + "\n---".join(bible_results))
+                all_context_docs.append("【世界观相关核心设定】:\n" + "\n---\n".join(bible_results))
         except Exception as e:
             logger.error(f"设定召回失败: {e}")
 
-        return {"retrieved_docs": all_context_docs}
+        return WritingResult(retrieved_docs=all_context_docs)
 
     @staticmethod
-    def generate_draft(state: dict, writing_style: str, full_config: dict, execute_func):
-        """生成章节内容并自动摘要索引"""
-        chain = create_draft_generation_chain(writing_style=writing_style)
-        inputs = {
-            "user_prompt": state.get("user_prompt"),
-            "research_results": state.get("research_results"),
-            "outline": state.get("outline"),
-            "section_to_write": state.get("section_to_write"),
-            "user_selected_docs": state.get("user_selected_docs", []),
-            "previous_chapter_draft": state.get("current_chapter_draft"),
-            "refinement_instruction": state.get("refinement_instruction")
-        }
-        
-        new_content = execute_func(chain, inputs)
-        
-        # 自动摘要与记忆索引逻辑
-        if new_content and not state.get("refinement_instruction"):
-            WritingService._index_chapter_summary(state, new_content, full_config)
-            
-            # 逻辑一致性审计 (Consistency Sentinel)
-            from services.knowledge_service import KnowledgeService
-            audit_result = KnowledgeService.run_consistency_check(state.get("collection_name"), new_content)
-            if audit_result != "PASS":
-                return {"new_draft_content": new_content, "consistency_warning": audit_result}
-            
-        return {"new_draft_content": new_content}
+    def _index_research_results(state, text, full_config):
+        collection_name = state.get("collection_name")
+        text_splitter = text_splitter_provider.get_text_splitter(full_config.get('active_text_splitter', 'default_recursive'))
+        vector_store_manager.index_text(collection_name, text, text_splitter, metadata={"source": "automated_research"})
 
     @staticmethod
     def _index_chapter_summary(state, content, full_config):
-        """内部方法：为新章节生成摘要和元数据并入库"""
-        try:
-            from chains import create_chapter_summary_chain
-            summary_chain = create_chapter_summary_chain()
-            res = summary_chain.invoke({"chapter_text": content})
-            
-            summary_text = res.get("summary", "")
-            ai_metadata = res.get("metadata", {})
-            
-            active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
-            text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id) 
-            
-            final_metadata = {
-                "project_name": state.get("project_name"),
-                "chapter_index": state.get("drafting_index", 0) + 1,
-                "document_type": "chapter_summary",
-                "source": f"chapter_{state.get('drafting_index', 0) + 1}"
-            }
-            # 修正：将元数据列表转换为字符串
-            for k, v in ai_metadata.items():
-                if isinstance(v, list):
-                    final_metadata[k] = ", ".join([str(item) for item in v])
-                else:
-                    final_metadata[k] = v
-            
-            vector_store_manager.index_text(state.get("collection_name"), summary_text, text_splitter, metadata=final_metadata)
-            logger.info(f"章节摘要及元数据已入库: {ai_metadata}")
-        except Exception as e:
-            logger.error(f"索引摘要失败: {e}", exc_info=True)
-            raise VectorStoreOperationError(f"无法同步记忆库: {e}")
-
-    @staticmethod
-    def run_revision(state: dict, writing_style: str, execute_func):
-        """执行全文修订逻辑"""
-        chain = create_revise_generation_chain(writing_style=writing_style)
-        inputs = {
-            "plan": state.get("plan"),
-            "outline": state.get("outline"),
-            "full_draft": state.get("full_draft"),
-            "user_selected_docs": state.get("user_selected_docs", [])
-        }
-        return {"final_manuscript": execute_func(chain, inputs)}
+        from chains import create_chapter_summary_chain
+        res = create_chapter_summary_chain().invoke({"chapter_text": content})
+        text_splitter = text_splitter_provider.get_text_splitter(full_config.get('active_text_splitter', 'default_recursive'))
+        final_meta = {"chapter_index": state.get("drafting_index", 0) + 1, "document_type": "chapter_summary"}
+        for k, v in res.get("metadata", {}).items():
+            final_meta[k] = ", ".join(v) if isinstance(v, list) else v
+        vector_store_manager.index_text(state.get("collection_name"), res.get("summary", ""), text_splitter, metadata=final_meta)

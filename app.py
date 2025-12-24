@@ -1,6 +1,5 @@
 import streamlit as st
 import logging
-import re
 from datetime import datetime
 from config import load_environment
 import config_manager
@@ -16,6 +15,7 @@ from ui_components.bible_view import render_bible_view
 from ui_components.insights_view import render_insights_view
 from ui_components.config_view import render_config_view
 from core.project_manager import ProjectManager
+from dataclasses import asdict, is_dataclass
 
 # --- 初始化 ---
 load_environment()
@@ -69,7 +69,18 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             if full_response: output_placeholder.markdown(full_response)
             else: output_placeholder.empty()
             
-            # 关键步骤自动保存
+            # --- 显式状态更新 (副作用隔离的终点) ---
+            if result:
+                # 兼容旧的字典返回
+                if isinstance(result, dict):
+                    st.session_state.update(result)
+                # 核心：处理新的强类型对象
+                elif is_dataclass(result):
+                    # 仅更新非 None 的值，防止抹除 UI 状态
+                    updates = {k: v for k, v in asdict(result).items() if v is not None}
+                    st.session_state.update(updates)
+
+            # 关键步骤自动保存 (保持)
             critical_steps = ["plan", "outline", "generate_draft", "generate_revision", "update_bible"]
             if step_name in critical_steps:
                 save_and_snapshot()
@@ -119,6 +130,7 @@ def main():
             if st.button("确认创建", width='stretch'):
                 if name:
                     reset_project_state()
+                    # 统一调用资产创建逻辑
                     internal_name = ProjectManager.create_project(name)
                     st.session_state.project_name = name
                     st.session_state.collection_name = internal_name

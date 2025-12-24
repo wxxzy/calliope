@@ -3,9 +3,7 @@
 系统的 Facade 层，负责将 UI 请求分发至具体的 Service 处理。
 """
 import logging
-import requests
-from custom_exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError
-from langchain_core.exceptions import OutputParserException
+from custom_exceptions import LLMOperationError
 
 # 引入子服务
 from services.writing_service import WritingService
@@ -56,9 +54,6 @@ def run_step(step_name: str, state: dict, full_config: dict, writing_style_descr
         else:
             raise ValueError(f"未知的步骤名称: {step_name}")
 
-        # 自动同步结果到状态字典 (统一状态处理逻辑)
-        if isinstance(res, dict):
-            state.update(res)
         return res
 
     except Exception as e:

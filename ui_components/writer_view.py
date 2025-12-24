@@ -1,6 +1,6 @@
 """
 写作工作流视图 (Writer Workflow View)
-负责渲染 Tab 1 内容，包含从规划、研究、大纲到撰写和导出的全过程 UI 交互。
+负责渲染 Tab 1 内容，包含从规划、大纲到撰写和导出的全过程 UI 交互。
 """
 import streamlit as st
 import vector_store_manager
@@ -11,6 +11,10 @@ import export_manager
 def render_writer_view(full_config, run_step_with_spinner_func):
     """
     渲染主写作流程界面。
+    
+    Args:
+        full_config (dict): 全局合并配置。
+        run_step_with_spinner_func (callable): 处理流式输出和加载状态的 UI包装器。
     """
     collection_name = st.session_state.collection_name
     vector_store_manager.get_or_create_collection(collection_name)
@@ -32,7 +36,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
             scene_data = KnowledgeService.get_scene_entities_info(collection_name, analysis_text)
             
             if scene_data:
-                # 1. 冲突预警 (New)
+                # 1. 冲突预警
                 if scene_data['conflicts']:
                     for c in scene_data['conflicts']:
                         st.error(f"⚠️ 场景张力预警: {c}")
@@ -47,7 +51,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                         else:
                             st.caption("暂无更多关联设定")
                         
-                        # --- 快速编辑功能 (New: Bible Sidebar 2.0) ---
+                        # --- 快速编辑功能 ---
                         st.divider()
                         with st.popover("🔧 修正/新增关系"):
                             st.caption(f"为 【{ent['name']}】 添加新关系")
@@ -101,7 +105,6 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         if 'plan' not in st.session_state:
             if st.button("生成写作计划与研究背景", type="primary", width='stretch'):
                 result = run_step_with_spinner_func("plan", "规划师正在构思并检索资料...", full_config)
-                # 结果已由 workflow_manager 自动同步到 session_state
                 if result:
                     st.rerun()
         else:
@@ -138,8 +141,8 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     del st.session_state.auto_run_outline_refinement
                     st.session_state.refinement_instruction = st.session_state.outline_refinement_instruction
                     result = run_step_with_spinner_func("outline", "优化大纲中...", full_config)
-                    if result and "outline" in result:
-                        st.session_state.new_outline = result["outline"]
+                    if result and getattr(result, "outline", None):
+                        st.session_state.new_outline = result.outline
                         st.session_state.clear_specific_refinement = "outline_refinement_instruction"
                         if "current_critique" in st.session_state: del st.session_state.current_critique
                         st.rerun()
@@ -147,8 +150,8 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                 if st.button("迭代优化大纲", type="secondary", key="refine_outline_btn"):
                     st.session_state.refinement_instruction = st.session_state.outline_refinement_instruction
                     result = run_step_with_spinner_func("outline", "正在调整大纲结构...", full_config)
-                    if result and "outline" in result:
-                        st.session_state.new_outline = result["outline"]
+                    if result and getattr(result, "outline", None):
+                        st.session_state.new_outline = result.outline
                         st.session_state.clear_specific_refinement = "outline_refinement_instruction"
                         st.rerun()
                 
@@ -156,8 +159,8 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     if st.button("🔍 请求 AI 评审 (大纲)", key="critique_outline_btn"):
                         st.session_state.critique_target_type = "outline"
                         result = run_step_with_spinner_func("critique", "评论员正在阅读并分析...", full_config)
-                        if result and "current_critique" in result:
-                            st.session_state.current_critique = result["current_critique"]
+                        if result and getattr(result, "current_critique", None):
+                            st.session_state.current_critique = result.current_critique
                             st.rerun()
                     if st.session_state.get("current_critique") and st.session_state.get("critique_target_type") == "outline":
                         st.markdown(st.session_state.current_critique)
@@ -167,6 +170,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                             st.session_state.auto_run_outline_refinement = True
                         
                         st.button("🔧 采纳建议并自动重写", key="refine_outline_with_critique", on_click=adopt_critique_callback)
+
         with st.container(border=True):
             st.subheader("第三步：正文撰写 (Hybrid RAG 增强)")
             if 'outline_sections' in st.session_state:
@@ -205,8 +209,8 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                 if st.button("✅ 确认资料并开始撰写", type="primary", key="confirm_docs_and_write"):
                     st.session_state['user_selected_docs'] = [docs_to_review[i] for i, s in selected_mask.items() if s]
                     result = run_step_with_spinner_func("generate_draft", "AI 写手正根据记忆进行创作...", full_config)
-                    if result and "new_draft_content" in result:
-                        st.session_state.drafts.append(result["new_draft_content"])
+                    if result and getattr(result, "new_draft_content", None):
+                        st.session_state.drafts.append(result.new_draft_content)
                         st.session_state.drafting_index += 1
                     del st.session_state['draft_context_review_mode']
                     st.rerun()
@@ -219,10 +223,10 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     if st.button(f"撰写第 {current + 1} 章", type="primary", key=f"write_chapter_{current}"):
                         st.session_state.section_to_write = st.session_state.outline_sections[current]
                         ret_result = run_step_with_spinner_func("retrieve_for_draft", "正在检索图谱与向量库...", full_config)
-                        if ret_result and "retrieved_docs" in ret_result:
+                        if ret_result and getattr(ret_result, "retrieved_docs", None):
                             st.session_state.draft_context_review_mode = True
-                            st.session_state.draft_retrieved_docs = ret_result['retrieved_docs']
-                            st.session_state.draft_selected_docs_mask = {i: True for i in range(len(ret_result['retrieved_docs']))}
+                            st.session_state.draft_retrieved_docs = ret_result.retrieved_docs
+                            st.session_state.draft_selected_docs_mask = {i: True for i in range(len(ret_result.retrieved_docs))}
                             st.rerun()
                 else:
                     st.success("🎉 全书初稿已撰写完毕！")
@@ -234,8 +238,6 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     t_f = col_f1.text_input("限定时间", placeholder="例: 1990年", key="ui_time_filter")
                     l_f = col_f2.text_input("限定地点", placeholder="例: 黑铁堡", key="ui_loc_filter")
                     
-                    # 构造 ChromaDB filter
-                    # 语法: {"$and": [{"time": "..."}, {"location": "..."}]}
                     active_filter = {}
                     filters = []
                     if t_f: filters.append({"time": t_f})
@@ -252,7 +254,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     if active_filter:
                         st.info(f"当前已启用过滤条件: {active_filter}")
 
-            # 章节内优化与评审 logic...
+            # 章节内优化与评审
             if st.session_state.get('drafts') and st.session_state.get("drafting_index", 0) > 0:
                 idx = len(st.session_state.drafts)
                 st.markdown("---")
@@ -266,9 +268,10 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     st.session_state.drafts.pop()
                     st.session_state.drafting_index -= 1
                     result = run_step_with_spinner_func("generate_draft", "正在重写本章...", full_config)
-                    if result and "new_draft_content" in result:
-                        st.session_state.drafts.append(result["new_draft_content"])
+                    if result and getattr(result, "new_draft_content", None):
+                        st.session_state.drafts.append(result.new_draft_content)
                         st.session_state.drafting_index += 1
+                        st.success("重写成功！")
                     else:
                         st.session_state.drafts.append(old_content)
                         st.session_state.drafting_index += 1
@@ -278,15 +281,15 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                     del st.session_state.auto_run_draft_refinement
                     perform_rewrite(st.session_state.draft_refinement_instruction)
 
-                if st.button(f"根据指令重写第 {idx} 章", type="secondary", key=f"rewrite_chapter_{idx}"):
+                if st.button(f"根据指令重写第 {idx} 章", type="secondary"):
                     perform_rewrite(st.session_state.draft_refinement_instruction)
 
                 with st.expander(f"🧐 第 {idx} 章 AI 评审"):
                     if st.button(f"🔍 获取本章评审", key=f"critique_draft_{idx}_btn"):
                         st.session_state.critique_target_type = "draft"
                         result = run_step_with_spinner_func("critique", "评论员正在交叉比对大纲...", full_config)
-                        if result and "current_critique" in result:
-                            st.session_state.current_critique = result["current_critique"]
+                        if result and getattr(result, "current_critique", None):
+                            st.session_state.current_critique = result.current_critique
                             st.rerun()
                     if st.session_state.get("current_critique") and st.session_state.get("critique_target_type") == "draft":
                         st.markdown(st.session_state.current_critique)
@@ -308,10 +311,12 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         with st.container(border=True):
             st.subheader("第四步：精修与润色")
             if 'final_manuscript' not in st.session_state:
-                if st.button("开始修订全文 (总编辑介入)", type="primary", key="start_revision"):
+                if st.button("开始修订全文 (总编辑介入)", type="primary"):
                     st.session_state.full_draft = "\n\n".join(st.session_state.drafts)
                     result = run_step_with_spinner_func("generate_revision", "正在润色并统一全文文风...", full_config)
-                    if result: st.session_state.update(result); st.rerun()
+                    # 结果已由包装器自动同步
+                    if result:
+                        st.rerun()
 
     if 'final_manuscript' in st.session_state:
         with st.container(border=True):

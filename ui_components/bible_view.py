@@ -23,8 +23,8 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
         )
         if st.button("🚀 统一同步 (向量库 + 知识图谱)", width='stretch', type="primary"):
             result = run_step_with_spinner_func("update_bible", "正在进行多维知识沉淀...", full_config)
-            if result and result.get("synced"):
-                st.success(f"同步成功！识别到 {result.get('new_relations_count', 0)} 条新关系。")
+            if result and getattr(result, "bible_synced", False):
+                st.success(f"同步成功！识别到 {getattr(result, 'extracted_count', 0)} 条新关系。")
                 st.rerun()
 
     st.markdown("---")

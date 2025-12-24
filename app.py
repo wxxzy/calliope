@@ -16,6 +16,7 @@ from ui_components.explorer_view import render_explorer_view
 from ui_components.graph_view import render_graph_view
 from ui_components.config_view import render_config_view
 from ui_components.timeline_view import render_timeline_view
+from ui_components.analytics_view import render_analytics_view
 from core.project_manager import ProjectManager
 
 # --- 初始化 ---
@@ -227,13 +228,14 @@ def main():
         st.stop()
 
     st.title(f"项目: {st.session_state.project_name}")
-    t1, t2, t3, t4, t5 = st.tabs(["写作", "记忆", "图谱", "年表", "配置"])
+    t1, t2, t3, t4, t5, t6 = st.tabs(["写作", "记忆", "图谱", "年表", "分析", "配置"])
 
     with t1: render_writer_view(full_config, run_step_with_spinner)
     with t2: render_explorer_view(st.session_state.collection_name)
     with t3: render_graph_view(st.session_state.collection_name, full_config, run_step_with_spinner)
     with t4: render_timeline_view(st.session_state.collection_name)
-    with t5: render_config_view(full_config)
+    with t5: render_analytics_view(st.session_state.collection_name)
+    with t6: render_config_view(full_config)
 
 if __name__ == "__main__":
     main()

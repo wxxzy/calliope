@@ -118,23 +118,35 @@ def main():
         selected_option = st.selectbox("项目列表", options=project_selection_options, index=idx)
 
         if selected_option == "--- 创建新项目 ---":
-            name = st.text_input("项目名称")
-            if st.button("创建"):
+            name = st.text_input("项目名称", key="new_proj_name_input")
+            if st.button("确认创建", use_container_width=True):
                 if name:
-                    col_name = re.sub(r'\W+', '_', name).lower()
-                    st.session_state.project_name = name
-                    st.session_state.collection_name = col_name
+                    # 1. 先清空旧状态，确保环境干净
                     reset_project_state()
-                    vector_store_manager.get_or_create_collection(col_name)
+                    
+                    # 2. 使用 ProjectManager 统一创建资产
+                    internal_name = ProjectManager.create_project(name)
+                    
+                    # 3. 设置当前项目的标识
+                    st.session_state.project_name = name
+                    st.session_state.collection_name = internal_name
+                    
+                    # 4. 立即保存初始存档
+                    save_and_snapshot()
+                    
+                    st.success(f"项目 '{name}' 已创建！")
                     st.rerun()
         elif selected_option != "--- 选择项目 ---" and st.session_state.get('collection_name') != selected_option:
             # 执行项目加载逻辑 (解耦后)
             loaded_data = state_manager.load_state_from_file(selected_option)
             if loaded_data:
+                # 先重置再更新，确保干净
+                reset_project_state()
                 st.session_state.update(loaded_data)
-                st.info(f"✅ 已恢复项目: {selected_option}")
+                st.session_state.project_name = loaded_data.get('project_name', selected_option)
+                st.info(f"✅ 已恢复项目进度: {selected_option}")
             else:
-                # 如果没有存档，则视作新加载
+                # 如果没有存档，则作为新加载
                 st.session_state.collection_name = selected_option
                 st.session_state.project_name = selected_option
                 reset_project_state()
@@ -151,6 +163,40 @@ def main():
             
             if st.session_state.get("last_save_time"):
                 st.caption(f"⏱️ 上次自动保存: {st.session_state.last_save_time}")
+
+            # --- 剧情分支管理 (New: Multi-Verse) ---
+            with st.expander("🌌 剧情分支 (Multi-Verse)", expanded=False):
+                st.caption("您可以保存当前进度的不同版本，用于探索不同的剧情走向。")
+                
+                # 创建新分支
+                branch_name = st.text_input("新分支名称", placeholder="例如: 结局A-悲剧", key="new_branch_input")
+                if st.button("保存当前为新分支", use_container_width=True):
+                    if branch_name:
+                        # 先保存当前
+                        data_to_save = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
+                        state_manager.save_state_to_file(st.session_state.collection_name, data_to_save)
+                        # 创建分支
+                        if ProjectManager.save_branch(st.session_state.collection_name, branch_name):
+                            st.success(f"已开启分支: {branch_name}")
+                            st.rerun()
+                
+                st.markdown("---")
+                # 加载已有分支
+                branches = ProjectManager.list_branches(st.session_state.collection_name)
+                if branches:
+                    st.write("现有分支:")
+                    for b in branches:
+                        if st.button(f"切换到: {b}", key=f"load_branch_{b}", use_container_width=True):
+                            # 构建分支对应的文件路径名
+                            branch_internal_id = f"{st.session_state.collection_name}_branch_{b}"
+                            # 使用 state_manager 加载
+                            loaded_data = state_manager.load_state_from_file(branch_internal_id)
+                            if loaded_data:
+                                # 注意：恢复后我们要把 collection_name 设回正常的
+                                st.session_state.update(loaded_data)
+                                st.rerun()
+                else:
+                    st.info("暂无命名分支。")
 
             if st.button("💾 手动保存并创建快照", type="primary", use_container_width=True):
                 if save_and_snapshot():

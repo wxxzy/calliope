@@ -6,11 +6,44 @@ import logging
 import graph_store_manager
 import vector_store_manager
 import text_splitter_provider
-from chains import create_graph_extraction_chain, create_community_naming_chain, create_critic_chain
+from chains import (
+    create_graph_extraction_chain, create_community_naming_chain, 
+    create_critic_chain, create_consistency_sentinel_chain
+)
 
 logger = logging.getLogger(__name__)
 
 class KnowledgeService:
+    @staticmethod
+    def run_consistency_check(collection_name: str, text: str):
+        """
+        执行剧情逻辑一致性审计 (Consistency Sentinel)。
+        对比当前文本与图谱中的硬设定冲突。
+        """
+        try:
+            G = graph_store_manager.load_graph(collection_name)
+            all_nodes = list(G.nodes())
+            # 识别涉及的实体
+            mentioned = [node for node in all_nodes if node.lower() in text.lower()]
+            if not mentioned:
+                return "PASS"
+            
+            # 提取图谱事实 (2步邻域)
+            graph_facts = graph_store_manager.get_multi_hop_context(collection_name, mentioned, radius=2)
+            if not graph_facts:
+                return "PASS"
+            
+            chain = create_consistency_sentinel_chain()
+            result = chain.invoke({
+                "graph_facts": graph_facts,
+                "chapter_text": text
+            })
+            
+            return result.strip()
+        except Exception as e:
+            logger.error(f"逻辑一致性校验失败: {e}")
+            return "PASS" # 出错时默认通过，以免干扰写作
+
     @staticmethod
     def sync_bible(state: dict, content: str, full_config: dict):
         """
@@ -89,6 +122,11 @@ class KnowledgeService:
         return graph_store_manager.generate_and_cache_community_names(
             collection_name, communities, chain, world_bible
         )
+
+    @staticmethod
+    def quick_update_relation(collection_name: str, source: str, relation: str, target: str):
+        """快速更新或添加一条关系"""
+        return graph_store_manager.add_manual_edge(collection_name, source, relation, target)
 
     @staticmethod
     def get_scene_entities_info(collection_name: str, text: str):

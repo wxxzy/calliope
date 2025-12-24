@@ -161,9 +161,17 @@ class WritingService:
         
         new_content = execute_func(chain, inputs)
         
-        # 自动摘要与记忆索引
+        # 自动摘要与记忆索引逻辑
         if new_content and not state.get("refinement_instruction"):
+            # 1. 索引摘要
             WritingService._index_chapter_summary(state, new_content, full_config)
+            
+            # 2. 逻辑一致性审计 (New: Consistency Sentinel)
+            from services.knowledge_service import KnowledgeService
+            audit_result = KnowledgeService.run_consistency_check(state.get("collection_name"), new_content)
+            if audit_result != "PASS":
+                # 将冲突警报存入 state
+                return {"new_draft_content": new_content, "consistency_warning": audit_result}
             
         return {"new_draft_content": new_content}
 

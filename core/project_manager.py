@@ -55,13 +55,38 @@ class ProjectManager:
             if not os.path.exists(SNAPSHOT_DIR): return
             files = [f for f in os.listdir(SNAPSHOT_DIR) if f.startswith(internal_name) and f.endswith(".json")]
             files.sort(key=lambda x: os.path.getmtime(os.path.join(SNAPSHOT_DIR, x)), reverse=True)
-            
+
             if len(files) > keep_count:
                 for old_file in files[keep_count:]:
                     os.remove(os.path.join(SNAPSHOT_DIR, old_file))
                 logger.info(f"已清理旧快照。")
         except Exception as e:
             logger.error(f"Snapshot cleanup failed: {e}")
+
+    @staticmethod
+    def save_branch(internal_name: str, branch_name: str):
+        """
+        保存一个命名的剧情分支快照。
+        """
+        os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+        source_path = os.path.join(state_manager.PROJECT_STATE_DIR, f"{internal_name}.json")
+        if not os.path.exists(source_path): return False
+        
+        target_path = os.path.join(SNAPSHOT_DIR, f"{internal_name}_branch_{branch_name}.json")
+        try:
+            shutil.copy2(source_path, target_path)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def list_branches(internal_name: str):
+        """
+        列出项目的所有命名分支。
+        """
+        if not os.path.exists(SNAPSHOT_DIR): return []
+        files = [f for f in os.listdir(SNAPSHOT_DIR) if f.startswith(f"{internal_name}_branch_") and f.endswith(".json")]
+        return [f.replace(f"{internal_name}_branch_", "").replace(".json", "") for f in files]
 
     @staticmethod
     def list_projects():

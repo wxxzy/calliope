@@ -7,7 +7,8 @@ from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from llm_provider import get_llm
 from prompts import (
     QUERY_REWRITER_PROMPT, CHAPTER_SUMMARIZER_PROMPT, 
-    CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT, COMMUNITY_NAMING_PROMPT
+    CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT, COMMUNITY_NAMING_PROMPT,
+    CONSISTENCY_CHECK_PROMPT
 )
 from vector_store_manager import retrieve_context
 from chains.base import get_writing_style_instruction
@@ -43,6 +44,10 @@ def create_graph_extraction_chain():
 def create_community_naming_chain():
     """创建派系命名链：根据角色分组信息生成具有文学感的组织名称"""
     return COMMUNITY_NAMING_PROMPT | get_llm("community_namer", temperature=0.3) | StrOutputParser()
+
+def create_consistency_sentinel_chain():
+    """创建逻辑一致性校验链：识别正文与图谱设定之间的冲突"""
+    return CONSISTENCY_CHECK_PROMPT | get_llm("critic", temperature=0.1) | StrOutputParser()
 
 def retrieve_with_rewriting(collection_name, query_text, recall_k, rerank_k, re_ranker):
     """

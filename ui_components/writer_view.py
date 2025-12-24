@@ -46,6 +46,18 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                                 st.caption(f"• {r}")
                         else:
                             st.caption("暂无更多关联设定")
+                        
+                        # --- 快速编辑功能 (New: Bible Sidebar 2.0) ---
+                        st.divider()
+                        with st.popover("🔧 修正/新增关系"):
+                            st.caption(f"为 【{ent['name']}】 添加新关系")
+                            new_rel = st.text_input("关系描述", placeholder="例如: 挚友", key=f"quick_r_{ent['name']}")
+                            new_target = st.text_input("目标实体", placeholder="例如: 艾瑞克", key=f"quick_t_{ent['name']}")
+                            if st.button("确认添加", key=f"quick_btn_{ent['name']}", use_container_width=True):
+                                if new_rel and new_target:
+                                    KnowledgeService.quick_update_relation(collection_name, ent['name'], new_rel, new_target)
+                                    st.success("已更新图谱！")
+                                    st.rerun()
             else:
                 st.info("未在当前内容中识别到已知实体。")
         else:
@@ -184,7 +196,16 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                 st.session_state.outline_sections = [s.strip() for s in st.session_state.outline.split('\n- ') if s.strip()]
                 st.session_state.drafts = []
                 st.session_state.drafting_index = 0
+                # 清理旧的校验警告
+                if "consistency_warning" in st.session_state: del st.session_state.consistency_warning
                 st.rerun()
+
+            # --- 逻辑一致性预警展示 ---
+            if st.session_state.get("consistency_warning"):
+                st.error(f"🛡️ 逻辑一致性哨兵提醒：\n\n{st.session_state.consistency_warning}")
+                if st.button("我知道了，忽略此警告"):
+                    del st.session_state.consistency_warning
+                    st.rerun()
 
             # 正常撰写逻辑逻辑...
             if st.session_state.get('draft_context_review_mode'):

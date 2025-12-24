@@ -116,7 +116,7 @@ def main():
 
         if selected_option == "--- 创建新项目 ---":
             name = st.text_input("项目名称", key="new_proj_name_input")
-            if st.button("确认创建", use_container_width=True):
+            if st.button("确认创建", width='stretch'):
                 if name:
                     reset_project_state()
                     internal_name = ProjectManager.create_project(name)
@@ -150,7 +150,7 @@ def main():
             if st.session_state.get("last_save_time"):
                 st.caption(f"⏱️ 上次自动保存: {st.session_state.last_save_time}")
 
-            if st.button("💾 手动保存并备份", type="primary", use_container_width=True):
+            if st.button("💾 手动保存并备份", type="primary", width='stretch'):
                 if save_and_snapshot(): st.toast("✅ 快照已手动生成")
             
             # 分支切换请求处理
@@ -167,7 +167,7 @@ def main():
             st.markdown("---")
             with st.expander("☢️ 危险区域", expanded=False):
                 if st.checkbox("确定要彻底删除本项目", key="confirm_delete_check"):
-                    if st.button("🔥 立即彻底删除", type="secondary", use_container_width=True):
+                    if st.button("🔥 立即彻底删除", type="secondary", width='stretch'):
                         ProjectManager.delete_project(st.session_state.collection_name)
                         reset_project_state()
                         if 'project_name' in st.session_state: del st.session_state.project_name

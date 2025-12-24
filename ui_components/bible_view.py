@@ -21,7 +21,7 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
             height=250,
             help="在这里输入长段的文字设定，点击下方按钮可同步至向量库并自动更新图谱。"
         )
-        if st.button("🚀 统一同步 (向量库 + 知识图谱)", use_container_width=True, type="primary"):
+        if st.button("🚀 统一同步 (向量库 + 知识图谱)", width='stretch', type="primary"):
             result = run_step_with_spinner_func("update_bible", "正在进行多维知识沉淀...", full_config)
             if result and result.get("synced"):
                 st.success(f"同步成功！识别到 {result.get('new_relations_count', 0)} 条新关系。")
@@ -82,7 +82,7 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
                 ns = col_n1.text_input("主体", key="m_s", placeholder="林恩")
                 nr = col_n2.text_input("连接关系", key="m_r", placeholder="宿敌")
                 nt = col_n3.text_input("客体", key="m_t", placeholder="艾瑞克")
-                if col_n4.button("织网", use_container_width=True):
+                if col_n4.button("织网", width='stretch'):
                     if ns and nr and nt:
                         graph_store_manager.add_manual_edge(collection_name, ns, nr, nt)
                         st.rerun()
@@ -98,7 +98,7 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
                     df_edges, 
                     key="bible_graph_editor", 
                     num_rows="dynamic",
-                    use_container_width=True,
+                    width='stretch',
                     column_config={
                         "关系描述": st.column_config.TextColumn(required=True),
                         "源": st.column_config.Column(disabled=True),
@@ -153,15 +153,15 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
                         })
                     
                     df_rev = pd.DataFrame(display_data)
-                    edited_rev = st.data_editor(df_rev, key="pending_review_editor", use_container_width=True)
+                    edited_rev = st.data_editor(df_rev, key="pending_review_editor", width='stretch')
                     
                     c_rev1, c_rev2 = st.columns(2)
-                    if c_rev1.button("📥 合并已确认关系", type="primary", use_container_width=True):
+                    if c_rev1.button("📥 合并已确认关系", type="primary", width='stretch'):
                         approved = [(row["源实体"], row["关系"], row["目标实体"]) for _, row in edited_rev.iterrows()]
                         graph_store_manager.update_graph_from_triplets(collection_name, approved)
                         del st.session_state.pending_triplets
                         st.rerun()
-                    if c_rev2.button("🧹 忽略全部提取", use_container_width=True):
+                    if c_rev2.button("🧹 忽略全部提取", width='stretch'):
                         del st.session_state.pending_triplets
                         st.rerun()
                 else:

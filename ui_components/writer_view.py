@@ -53,7 +53,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                             st.caption(f"为 【{ent['name']}】 添加新关系")
                             new_rel = st.text_input("关系描述", placeholder="例如: 挚友", key=f"quick_r_{ent['name']}")
                             new_target = st.text_input("目标实体", placeholder="例如: 艾瑞克", key=f"quick_t_{ent['name']}")
-                            if st.button("确认添加", key=f"quick_btn_{ent['name']}", use_container_width=True):
+                            if st.button("确认添加", key=f"quick_btn_{ent['name']}", width='stretch'):
                                 if new_rel and new_target:
                                     KnowledgeService.quick_update_relation(collection_name, ent['name'], new_rel, new_target)
                                     st.success("已更新图谱！")
@@ -99,7 +99,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         st.selectbox("选择辅助研究工具:", options=list(user_tools.keys()), key="selected_tool_id")
 
         if 'plan' not in st.session_state:
-            if st.button("生成写作计划与研究背景", type="primary", use_container_width=True):
+            if st.button("生成写作计划与研究背景", type="primary", width='stretch'):
                 result = run_step_with_spinner_func("plan", "规划师正在构思并检索资料...", full_config)
                 # 结果已由 workflow_manager 自动同步到 session_state
                 if result:
@@ -125,7 +125,7 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         with st.container(border=True):
             st.subheader("第二步：大纲设计")
             if 'outline' not in st.session_state:
-                if st.button("生成文章大纲", type="primary", use_container_width=True):
+                if st.button("生成文章大纲", type="primary", width='stretch'):
                     result = run_step_with_spinner_func("outline", "大纲师正在规划结构...", full_config)
                     if result:
                         st.rerun()

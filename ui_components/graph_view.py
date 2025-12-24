@@ -166,7 +166,7 @@ def render_graph_view(collection_name, full_config, run_step_with_spinner_func):
             new_s = ce1.text_input("源实体", key="manual_s", placeholder="林恩")
             new_r = ce2.text_input("关系", key="manual_r", placeholder="宿敌")
             new_t = ce3.text_input("目标实体", key="manual_t", placeholder="艾瑞克")
-            if ce4.button("立即添加", use_container_width=True):
+            if ce4.button("立即添加", width='stretch'):
                 if new_s and new_r and new_t:
                     graph_store_manager.add_manual_edge(collection_name, new_s, new_r, new_t)
                     st.rerun()

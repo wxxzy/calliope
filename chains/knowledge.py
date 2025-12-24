@@ -21,8 +21,8 @@ def create_query_rewrite_chain():
     return QUERY_REWRITER_PROMPT | get_llm("query_rewriter") | StrOutputParser()
 
 def create_chapter_summary_chain():
-    """创建章节摘要链：用于为存入记忆库提供精简的情节概括"""
-    return CHAPTER_SUMMARIZER_PROMPT | get_llm("chapter_summarizer") | StrOutputParser()
+    """创建章节摘要链：用于为存入记忆库提供精简的情节概括及结构化元数据"""
+    return CHAPTER_SUMMARIZER_PROMPT | get_llm("chapter_summarizer") | JsonOutputParser()
 
 def create_critic_chain(writing_style: str = ""):
     """创建评论员链：提供专业的文学逻辑和文风评估反馈"""
@@ -49,11 +49,11 @@ def create_consistency_sentinel_chain():
     """创建逻辑一致性校验链：识别正文与图谱设定之间的冲突"""
     return CONSISTENCY_CHECK_PROMPT | get_llm("consistency_sentinel", temperature=0.1) | StrOutputParser()
 
-def retrieve_with_rewriting(collection_name, query_text, recall_k, rerank_k, re_ranker):
+def retrieve_with_rewriting(collection_name, query_text, recall_k, rerank_k, re_ranker, filter_dict=None):
     """
     带查询重写的综合检索逻辑。
-    包含：重写查询 -> 向量数据库召回 -> 重排序优化。
+    包含：重写查询 -> 向量数据库召回 (含元数据过滤) -> 重排序优化。
     """
     rewriter = create_query_rewrite_chain()
     rewritten_query = rewriter.invoke({"original_query": query_text})
-    return retrieve_context(collection_name, rewritten_query, recall_k, re_ranker, rerank_k)
+    return retrieve_context(collection_name, rewritten_query, recall_k, re_ranker, rerank_k, filter_dict=filter_dict)

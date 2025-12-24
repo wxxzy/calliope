@@ -100,24 +100,25 @@ def index_text(collection_name: str, text: str, text_splitter, metadata: dict = 
     logger.info(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
 
 # --- 检索 ---
-def retrieve_context(collection_name: str, query: str, recall_k: int = 20, re_ranker=None, rerank_k: int = 5) -> list[str]:
+def retrieve_context(collection_name: str, query: str, recall_k: int = 20, re_ranker=None, rerank_k: int = 5, filter_dict: dict = None) -> list[str]:
     """
-    从指定集合中检索与查询最相关的文本块，并支持可选的重排。
+    从指定集合中检索与查询最相关的文本块，并支持元数据过滤和可选的重排。
 
     Args:
         collection_name (str): 从哪个集合检索。
         query (str): 查询字符串。
         recall_k (int): 初始检索返回的文档数量。
-        re_ranker: (可选) 已实例化的重排器模型，例如 CrossEncoder。
+        re_ranker: (可选) 已实例化的重排器模型。
         rerank_k (int): 重排后返回的最终文档数量。
+        filter_dict (dict): (可选) ChromaDB 元数据过滤字典，例如 {"time": "1990年"}。
 
     Returns:
         list[str]: 相关的文本块内容列表。
     """
     vectorstore = get_or_create_collection(collection_name)
     
-    # 直接使用 recall_k 进行初始检索
-    results_with_scores = vectorstore.similarity_search_with_score(query, k=recall_k)
+    # 执行带过滤的检索
+    results_with_scores = vectorstore.similarity_search_with_score(query, k=recall_k, filter=filter_dict)
     
     retrieved_docs = [doc.page_content for doc, score in results_with_scores]
     logger.debug(f"从 '{collection_name}' 中为查询 '{query}' 初始检索到 {len(retrieved_docs)} 个文档。")

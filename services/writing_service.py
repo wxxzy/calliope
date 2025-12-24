@@ -133,11 +133,15 @@ class WritingService:
         if mentioned_entities:
             enhanced_query = f"{section_to_write} (涉及实体: {', '.join(mentioned_entities)})"
 
+        # 未来可以根据 state 中的 timeline_focus 设置 filter_dict
+        filter_dict = state.get("active_metadata_filter")
+
         retrieved_docs = retrieve_with_rewriting(
             collection_name, enhanced_query, 
             rag_config.get("recall_k", 20), 
             rag_config.get("rerank_k", 5), 
-            re_ranker
+            re_ranker,
+            filter_dict=filter_dict
         )
         
         if graph_context_doc:
@@ -177,20 +181,36 @@ class WritingService:
 
     @staticmethod
     def _index_chapter_summary(state, content, full_config):
-        """内部方法：为新章节生成摘要并入库"""
+        """内部方法：为新章节生成摘要和元数据并入库"""
         try:
             summary_chain = create_chapter_summary_chain()
-            summary = summary_chain.invoke({"chapter_text": content})
+            # 现在返回的是包含 summary 和 metadata 的字典
+            res = summary_chain.invoke({"chapter_text": content})
+            
+            summary_text = res.get("summary", "")
+            ai_metadata = res.get("metadata", {})
             
             active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
             text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id) 
             
-            metadata = {
+            # 构建最终存入向量库的元数据
+            final_metadata = {
                 "project_name": state.get("project_name"),
                 "chapter_index": state.get("drafting_index", 0) + 1,
-                "document_type": "chapter_summary"
+                "document_type": "chapter_summary",
+                "source": f"chapter_{state.get('drafting_index', 0) + 1}"
             }
-            vector_store_manager.index_text(state.get("collection_name"), summary, text_splitter, metadata=metadata)
+            # 合并 AI 提取的元数据（时间、地点、张力等）
+            # 关键修复：ChromaDB 不支持列表作为元数据值，需要转换为字符串
+            for k, v in ai_metadata.items():
+                if isinstance(v, list):
+                    final_metadata[k] = ", ".join([str(item) for item in v])
+                else:
+                    final_metadata[k] = v
+            
+            # 存入向量数据库
+            vector_store_manager.index_text(state.get("collection_name"), summary_text, text_splitter, metadata=final_metadata)
+            logger.info(f"章节摘要及元数据已入库: {ai_metadata}")
         except Exception as e:
             logger.error(f"索引摘要失败: {e}")
             raise VectorStoreOperationError(f"无法同步记忆库: {e}")

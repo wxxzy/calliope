@@ -242,7 +242,32 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                 else:
                     st.success("🎉 全书初稿已撰写完毕！")
 
-            # 章节内优化与评审
+                # --- 检索过滤器 (New: RAG Filtering) ---
+                with st.expander("🔍 检索范围高级设置 (可选)", expanded=False):
+                    st.caption("设置后，AI 在生成本章时将优先/仅参考符合条件的记忆。")
+                    col_f1, col_f2 = st.columns(2)
+                    t_f = col_f1.text_input("限定时间", placeholder="例: 1990年", key="ui_time_filter")
+                    l_f = col_f2.text_input("限定地点", placeholder="例: 黑铁堡", key="ui_loc_filter")
+                    
+                    # 构造 ChromaDB filter
+                    # 语法: {"$and": [{"time": "..."}, {"location": "..."}]}
+                    active_filter = {}
+                    filters = []
+                    if t_f: filters.append({"time": t_f})
+                    if l_f: filters.append({"location": l_f})
+                    
+                    if len(filters) > 1:
+                        active_filter = {"$and": filters}
+                    elif len(filters) == 1:
+                        active_filter = filters[0]
+                    else:
+                        active_filter = None
+                    
+                    st.session_state.active_metadata_filter = active_filter
+                    if active_filter:
+                        st.info(f"当前已启用过滤条件: {active_filter}")
+
+            # 章节内优化与评审 logic...
             if st.session_state.get('drafts') and st.session_state.get("drafting_index", 0) > 0:
                 idx = len(st.session_state.drafts)
                 st.markdown("---")

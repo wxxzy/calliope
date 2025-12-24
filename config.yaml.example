@@ -43,7 +43,7 @@ models:
   # 例如，下面是火山方舟豆包模型的配置
   doubao_seed:
     provider: "openai_compatible"
-    model_name: "doubao-seed-1-6-251015"
+    model_name: "doubao-seed-1-6-flash-250828"
     api_key_env: "DOUBAO_CUSTOM_API_KEY" # 在 .env 文件中定义
     base_url_env: "DOUBAO_CUSTOM_BASE_URL" # 在 .env 文件中定义
 

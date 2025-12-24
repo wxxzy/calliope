@@ -21,12 +21,12 @@ models:
     api_key_env: GOOGLE_API_KEY
   doubao_seed:
     template: openai_compatible
-    model_name: doubao-seed-1-6-251015
+    model_name: doubao-seed-1-6-flash-250828
     api_key_env: DOUBAO_CUSTOM_API_KEY
     base_url_env: DOUBAO_CUSTOM_BASE_URL
   DeepSeek-V3.2:
     template: openai_compatible
-    model_name: doubao-seed-1-6-251015
+    model_name: doubao-seed-1-6-flash-250828
     api_key_env: DOUBAO_CUSTOM_API_KEY
     base_url_env: DOUBAO_CUSTOM_BASE_URL
   llama3_8b:

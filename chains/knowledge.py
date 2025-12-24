@@ -47,7 +47,7 @@ def create_community_naming_chain():
 
 def create_consistency_sentinel_chain():
     """创建逻辑一致性校验链：识别正文与图谱设定之间的冲突"""
-    return CONSISTENCY_CHECK_PROMPT | get_llm("critic", temperature=0.1) | StrOutputParser()
+    return CONSISTENCY_CHECK_PROMPT | get_llm("consistency_sentinel", temperature=0.1) | StrOutputParser()
 
 def retrieve_with_rewriting(collection_name, query_text, recall_k, rerank_k, re_ranker):
     """

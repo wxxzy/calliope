@@ -15,6 +15,7 @@ steps:
   query_rewriter: doubao_seed
   chapter_summarizer: doubao_seed
   community_namer: doubao_seed
+  consistency_sentinel: doubao_seed
 embeddings:
   my_custom_embedding:
     template: openai

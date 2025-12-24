@@ -50,6 +50,7 @@ steps:
   query_rewriter: gemini-2.0-flash
   chapter_summarizer: doubao_seed
   community_namer: gemini-2.0-flash
+  consistency_sentinel: gemini-2.0-flash
 embeddings:
   openai_embedding:
     template: openai

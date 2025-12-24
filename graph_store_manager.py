@@ -365,3 +365,14 @@ def remove_edge(collection_name: str, source: str, target: str):
 def add_manual_edge(collection_name: str, source: str, relation: str, target: str):
     """人工手动添加一条边（会自动创建不存在的节点）"""
     return update_graph_from_triplets(collection_name, [(source, relation, target)])
+
+def update_edge_relation(collection_name: str, source: str, target: str, new_relation: str):
+    """
+    更新现有连线的关系描述。
+    """
+    G = load_graph(collection_name)
+    if G.has_edge(source, target):
+        G[source][target]['relation'] = new_relation
+        save_graph(collection_name, G)
+        return True
+    return False

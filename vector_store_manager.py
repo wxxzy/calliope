@@ -166,10 +166,6 @@ def get_collection_data(collection_name: str) -> dict:
 def delete_documents(collection_name: str, ids: List[str]):
     """
     根据ID列表从指定集合中删除文档。
-
-    Args:
-        collection_name (str): 集合名称。
-        ids (List[str]): 要删除的文档ID列表。
     """
     client = get_chroma_client()
     try:
@@ -178,6 +174,21 @@ def delete_documents(collection_name: str, ids: List[str]):
         logger.info(f"成功从集合 '{collection_name}' 中删除 {len(ids)} 个文档。")
     except Exception as e:
         logger.error(f"从集合 '{collection_name}' 删除文档时发生错误: {e}", exc_info=True)
+
+def delete_by_metadata(collection_name: str, filter_dict: dict):
+    """
+    根据元数据过滤条件删除文档。
+    例如：delete_by_metadata(col, {"source": "world_bible"})
+    """
+    client = get_chroma_client()
+    try:
+        collection = client.get_collection(name=collection_name)
+        collection.delete(where=filter_dict)
+        logger.info(f"已根据元数据 {filter_dict} 清理集合 '{collection_name}' 中的旧数据。")
+        return True
+    except Exception as e:
+        logger.error(f"按元数据删除失败: {e}")
+        return False
 
 def update_document(collection_name: str, doc_id: str, new_text: str = None, new_metadata: dict = None):
     """

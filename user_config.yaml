@@ -30,3 +30,6 @@ re_rankers:
     template: sentence_transformers_reranker
     model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
 active_re_ranker_id: my_reranker
+rag:
+  recall_k: 10
+  rerank_k: 3

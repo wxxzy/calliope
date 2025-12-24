@@ -73,21 +73,98 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
         agraph(nodes=nodes, edges=edges, config=Config(width=1000, height=500, physics=True))
 
         # 3. 在线管理
-        with st.expander("🛠️ 实体与关系手动编辑"):
-            t_e1, t_e2 = st.tabs(["关系编辑", "节点清理"])
-            with t_e1:
+        with st.expander("🛠️ 实体与关系维护中心", expanded=False):
+            tab_edit1, tab_edit2, tab_edit3 = st.tabs(["关系网编辑器", "实体词条管理", "自动提取审核"])
+            
+            with tab_edit1:
+                st.write("**手动织网**")
                 col_n1, col_n2, col_n3, col_n4 = st.columns([2,2,2,1])
-                ns = col_n1.text_input("源", key="m_s")
-                nr = col_n2.text_input("关系", key="m_r")
-                nt = col_n3.text_input("目标", key="m_t")
-                if col_n4.button("添加"):
-                    graph_store_manager.add_manual_edge(collection_name, ns, nr, nt)
+                ns = col_n1.text_input("主体", key="m_s", placeholder="林恩")
+                nr = col_n2.text_input("连接关系", key="m_r", placeholder="宿敌")
+                nt = col_n3.text_input("客体", key="m_t", placeholder="艾瑞克")
+                if col_n4.button("织网", use_container_width=True):
+                    if ns and nr and nt:
+                        graph_store_manager.add_manual_edge(collection_name, ns, nr, nt)
+                        st.rerun()
+                
+                st.write("**现有关系修正**")
+                # 提取当前所有边
+                edges_list = []
+                for u, v, d in G.edges(data=True):
+                    edges_list.append({"源": u, "关系描述": d.get('relation', '关联'), "目标": v})
+                
+                df_edges = pd.DataFrame(edges_list)
+                edited_df = st.data_editor(
+                    df_edges, 
+                    key="bible_graph_editor", 
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    column_config={
+                        "关系描述": st.column_config.TextColumn(required=True),
+                        "源": st.column_config.Column(disabled=True),
+                        "目标": st.column_config.Column(disabled=True)
+                    }
+                )
+                
+                if st.button("💾 确认同步修改至全书图谱", type="primary"):
+                    # 识别修改：目前采取最稳妥的全量同步策略
+                    new_G = nx.Graph()
+                    for _, row in edited_df.iterrows():
+                        if row["源"] and row["目标"]:
+                            new_G.add_edge(row["源"], row["目标"], relation=row["关系描述"])
+                    graph_store_manager.save_graph(collection_name, new_G)
+                    st.success("图谱同步成功！")
                     st.rerun()
-                # 表格编辑略... (保持之前的实现)
-            with t_e2:
-                to_del = st.multiselect("删除实体", list(G.nodes()))
-                if st.button("确认删除"):
+
+            with tab_edit2:
+                st.write("**实体清单与清理**")
+                nodes_data = []
+                communities = graph_store_manager.detect_communities(collection_name)
+                cached_names = graph_store_manager.load_cached_community_names(collection_name)
+                
+                for node in G.nodes():
+                    comm_id = next((n for n, m in communities.items() if node in m), "未知")
+                    nodes_data.append({
+                        "实体名": node,
+                        "所属派系": cached_names.get(comm_id, comm_id),
+                        "关系深度": G.degree(node)
+                    })
+                
+                st.table(pd.DataFrame(nodes_data))
+                
+                to_del = st.multiselect("彻底移除实体 (慎重)", list(G.nodes()), key="del_nodes_ms")
+                if st.button("🗑️ 确认删除选中实体"):
                     for n in to_del: graph_store_manager.remove_node(collection_name, n)
                     st.rerun()
+
+            with tab_edit3:
+                st.write("**AI 自动发现的关系审核**")
+                if st.session_state.get("pending_triplets"):
+                    pending = st.session_state.pending_triplets
+                    conflicts = graph_store_manager.detect_triplet_conflicts(collection_name, pending)
+                    display_data = []
+                    for i, t in enumerate(pending):
+                        if not isinstance(t, (list, tuple)) or len(t) != 3: continue
+                        conflict = next((c for c in conflicts if c["triplet"] == list(t)), None)
+                        display_data.append({
+                            "状态": "⚠️ 冲突" if conflict else "✅ 正常",
+                            "源实体": t[0], "关系": t[1], "目标实体": t[2],
+                            "备注": conflict["reason"] if conflict else "待入库"
+                        })
+                    
+                    df_rev = pd.DataFrame(display_data)
+                    edited_rev = st.data_editor(df_rev, key="pending_review_editor", use_container_width=True)
+                    
+                    c_rev1, c_rev2 = st.columns(2)
+                    if c_rev1.button("📥 合并已确认关系", type="primary", use_container_width=True):
+                        approved = [(row["源实体"], row["关系"], row["目标实体"]) for _, row in edited_rev.iterrows()]
+                        graph_store_manager.update_graph_from_triplets(collection_name, approved)
+                        del st.session_state.pending_triplets
+                        st.rerun()
+                    if c_rev2.button("🧹 忽略全部提取", use_container_width=True):
+                        del st.session_state.pending_triplets
+                        st.rerun()
+                else:
+                    st.info("当前没有待审核的自动提取结果。")
     else:
-        st.info("图谱目前为空。")
+        st.info("图谱目前为空。请在上方输入世界观并同步。")

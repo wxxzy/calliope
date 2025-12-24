@@ -1,6 +1,5 @@
-"""
-写作业务服务 (Writing Service)
-处理灵感规划（含自动研究）、大纲生成、章节撰写（含 Hybrid RAG）及全文修订。
+"""写作业务服务 (Writing Service)
+处理灵感规划（含自动研究）、大纲生成、章节撰写（含 Hybrid RAG 2.0）及全文修订。
 """
 import logging
 from chains import (
@@ -27,14 +26,7 @@ class WritingService:
     def run_plan(state: dict, writing_style: str, full_config: dict, execute_func):
         """
         执行“灵感构思”逻辑 (合并了规划与研究)。
-        
-        流程：
-        1. 调用 Planner 生成初步写作计划。
-        2. 自动获取选中的搜索工具。
-        3. 自动调用 Researcher 根据计划进行 Web 并行搜索并总结。
-        4. 将研究资料持久化到项目向量库中。
         """
-        # --- 步骤 1: 生成写作计划 ---
         planner_chain = create_planner_chain(writing_style=writing_style)
         planner_inputs = {
             "user_prompt": state.get("user_prompt"),
@@ -43,7 +35,6 @@ class WritingService:
         }
         plan_text = execute_func(planner_chain, planner_inputs)
 
-        # --- 步骤 2: 自动进行背景研究 (整合逻辑) ---
         tool_id = state.get("selected_tool_id", "ddg_default") 
         search_tool = tool_provider.get_tool(tool_id)
         
@@ -58,11 +49,9 @@ class WritingService:
         logger.info(f"正在使用工具 '{tool_id}' 进行自动背景研究...")
         research_text = execute_func(research_chain, research_inputs)
 
-        # --- 步骤 3: 研究知识沉淀 ---
         if research_text:
             WritingService._index_research_results(state, research_text, full_config)
 
-        # 同时返回计划和研究摘要，供 UI 更新状态
         return {
             "plan": plan_text, 
             "research_results": research_text 
@@ -102,52 +91,90 @@ class WritingService:
     @staticmethod
     def retrieve_for_draft(state: dict, full_config: dict):
         """
-        为章节撰写检索上下文 (Hybrid RAG 2.0)。
-        融合图谱关系网与向量语义检索。
+        为章节撰写检索上下文 (Tiered Memory + Hybrid RAG 2.0)。
+        
+        策略：
+        1. Graph Context: 图谱实体关联 (2步邻域)。
+        2. Strong Memory: 强制包含最近 3 章的摘要 (确保即时连贯)。
+        3. Weak Memory: 通过 RAG 检索更早章节的摘要 (长线召回)。
+        4. Bible Context: 检索最新的世界观设定。
         """
         import graph_store_manager
         collection_name = state.get("collection_name")
         section_to_write = state.get("section_to_write", "")
+        current_idx = state.get("drafting_index", 0) + 1 
         
-        # 获取 RAG 配置
         active_re_ranker_id = full_config.get("active_re_ranker_id")
         re_ranker = re_ranker_provider.get_re_ranker(active_re_ranker_id)
         rag_config = full_config.get("rag", {})
         
-        # 1. 实体识别与图谱先行
-        graph_context_doc = ""
+        all_context_docs = []
+
+        # 1. 图谱层 (Graph Context)
         try:
             G = graph_store_manager.load_graph(collection_name)
-            all_nodes = list(G.nodes())
-            mentioned_entities = [node for node in all_nodes if node.lower() in section_to_write.lower()]
-            
+            mentioned_entities = [node for node in list(G.nodes()) if node.lower() in section_to_write.lower()]
             if mentioned_entities:
                 raw_graph_text = graph_store_manager.get_multi_hop_context(collection_name, mentioned_entities, radius=2)
                 if raw_graph_text:
-                    graph_context_doc = f"【知识图谱核心关联 (权威设定)】:\n{raw_graph_text}\n(请在撰写时严格遵守上述关系设定)"
+                    all_context_docs.append(f"【知识图谱核心关联】:\n{raw_graph_text}")
         except Exception as e:
             logger.error(f"图谱预检索失败: {e}")
 
-        # 2. 向量检索 (增强查询)
-        enhanced_query = section_to_write
-        if mentioned_entities:
-            enhanced_query = f"{section_to_write} (涉及实体: {', '.join(mentioned_entities)})"
+        # 2. 强记忆层 (Strong Memory: 最近 3 章摘要)
+        try:
+            strong_filter = {
+                "$and": [
+                    {"document_type": "chapter_summary"},
+                    {"chapter_index": {"$gte": max(1, current_idx - 3)}},
+                    {"chapter_index": {"$lt": current_idx}}
+                ]
+            }
+            recent_summaries = vector_store_manager.retrieve_context(
+                collection_name, "最近剧情回顾", recall_k=10, filter_dict=strong_filter
+            )
+            if recent_summaries:
+                all_context_docs.append("【近期剧情强记忆 (必读)】:\n" + "\n---\n".join(recent_summaries))
+        except Exception as e:
+            logger.error(f"强记忆提取失败: {e}")
 
-        # 未来可以根据 state 中的 timeline_focus 设置 filter_dict
-        filter_dict = state.get("active_metadata_filter")
+        # 3. 弱记忆层 (Weak Memory: 更早章节的语义召回)
+        try:
+            weak_filter = {
+                "$and": [
+                    {"document_type": "chapter_summary"},
+                    {"chapter_index": {"$lt": max(1, current_idx - 3)}}
+                ]
+            }
+            if current_idx > 3:
+                # 增强查询词，加入涉及实体
+                search_query = f"{section_to_write} (涉及实体: {', '.join(mentioned_entities)})" if mentioned_entities else section_to_write
+                rag_results = retrieve_with_rewriting(
+                    collection_name, search_query, 
+                    recall_k=rag_config.get("recall_k", 20), 
+                    rerank_k=5, 
+                    re_ranker=re_ranker,
+                    filter_dict=weak_filter
+                )
+                if rag_results:
+                    all_context_docs.append("【远期相关剧情参考】:\n" + "\n---".join(rag_results))
+        except Exception as e:
+            logger.error(f"弱记忆 RAG 失败: {e}")
 
-        retrieved_docs = retrieve_with_rewriting(
-            collection_name, enhanced_query, 
-            rag_config.get("recall_k", 20), 
-            rag_config.get("rerank_k", 5), 
-            re_ranker,
-            filter_dict=filter_dict
-        )
-        
-        if graph_context_doc:
-            retrieved_docs.insert(0, graph_context_doc)
-        
-        return {"retrieved_docs": retrieved_docs}
+        # 4. 世界观设定召回 (Bible RAG)
+        try:
+            bible_filter = {"source": "world_bible"}
+            bible_results = retrieve_with_rewriting(
+                collection_name, section_to_write, 
+                recall_k=15, rerank_k=5, re_ranker=re_ranker,
+                filter_dict=bible_filter
+            )
+            if bible_results:
+                all_context_docs.append("【世界观相关核心设定】:\n" + "\n---".join(bible_results))
+        except Exception as e:
+            logger.error(f"设定召回失败: {e}")
+
+        return {"retrieved_docs": all_context_docs}
 
     @staticmethod
     def generate_draft(state: dict, writing_style: str, full_config: dict, execute_func):
@@ -167,14 +194,12 @@ class WritingService:
         
         # 自动摘要与记忆索引逻辑
         if new_content and not state.get("refinement_instruction"):
-            # 1. 索引摘要
             WritingService._index_chapter_summary(state, new_content, full_config)
             
-            # 2. 逻辑一致性审计 (New: Consistency Sentinel)
+            # 逻辑一致性审计 (Consistency Sentinel)
             from services.knowledge_service import KnowledgeService
             audit_result = KnowledgeService.run_consistency_check(state.get("collection_name"), new_content)
             if audit_result != "PASS":
-                # 将冲突警报存入 state
                 return {"new_draft_content": new_content, "consistency_warning": audit_result}
             
         return {"new_draft_content": new_content}
@@ -183,8 +208,8 @@ class WritingService:
     def _index_chapter_summary(state, content, full_config):
         """内部方法：为新章节生成摘要和元数据并入库"""
         try:
+            from chains import create_chapter_summary_chain
             summary_chain = create_chapter_summary_chain()
-            # 现在返回的是包含 summary 和 metadata 的字典
             res = summary_chain.invoke({"chapter_text": content})
             
             summary_text = res.get("summary", "")
@@ -193,26 +218,23 @@ class WritingService:
             active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
             text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id) 
             
-            # 构建最终存入向量库的元数据
             final_metadata = {
                 "project_name": state.get("project_name"),
                 "chapter_index": state.get("drafting_index", 0) + 1,
                 "document_type": "chapter_summary",
                 "source": f"chapter_{state.get('drafting_index', 0) + 1}"
             }
-            # 合并 AI 提取的元数据（时间、地点、张力等）
-            # 关键修复：ChromaDB 不支持列表作为元数据值，需要转换为字符串
+            # 修正：将元数据列表转换为字符串
             for k, v in ai_metadata.items():
                 if isinstance(v, list):
                     final_metadata[k] = ", ".join([str(item) for item in v])
                 else:
                     final_metadata[k] = v
             
-            # 存入向量数据库
             vector_store_manager.index_text(state.get("collection_name"), summary_text, text_splitter, metadata=final_metadata)
             logger.info(f"章节摘要及元数据已入库: {ai_metadata}")
         except Exception as e:
-            logger.error(f"索引摘要失败: {e}")
+            logger.error(f"索引摘要失败: {e}", exc_info=True)
             raise VectorStoreOperationError(f"无法同步记忆库: {e}")
 
     @staticmethod

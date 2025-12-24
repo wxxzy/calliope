@@ -48,17 +48,20 @@ class KnowledgeService:
     def sync_bible(state: dict, content: str, full_config: dict):
         """
         统一同步世界观百科 (Vector + Graph)。
-        这是系统所有“设定”更新的唯一权威入口。
+        执行覆盖式索引：先删除旧设定，再写入新设定，确保版本一致。
         """
         collection_name = state.get("collection_name")
         if not content: return {"synced": False}
 
-        # 1. 向量库索引
+        # 1. 覆盖式向量索引
         try:
+            # 先物理删除向量库中旧的设定片段
+            vector_store_manager.delete_by_metadata(collection_name, {"source": "world_bible"})
+            
             active_splitter_id = full_config.get('active_text_splitter', 'default_recursive') 
             text_splitter = text_splitter_provider.get_text_splitter(active_splitter_id)
             vector_store_manager.index_text(collection_name, content, text_splitter, metadata={"source": "world_bible"})
-            logger.info(f"Vector sync complete for {collection_name}")
+            logger.info(f"Vector overwrite sync complete for {collection_name}")
         except Exception as e:
             logger.error(f"Vector sync failed: {e}")
 

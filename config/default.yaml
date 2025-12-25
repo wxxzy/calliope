@@ -41,6 +41,14 @@ models:
 steps:
   planner: gemini-2.0-flash
   critic: gemini-2.0-flash
+  graph_generator: gemini-2.0-flash
+  researcher: gemini-2.0-flash
+  summarizer: gemini-2.0-flash
+  outliner: gemini-2.0-flash
+  drafter: gemini-2.0-flash
+  reviser: gemini-2.0-flash
+  query_rewriter: gemini-2.0-flash
+  chapter_summarizer: gemini-2.0-flash
   consistency_sentinel: gemini-2.0-flash
 embeddings:
   openai_embedding:

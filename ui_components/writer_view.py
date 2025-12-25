@@ -187,6 +187,8 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                 st.session_state.drafting_index = 0
                 # 清理旧的校验警告
                 if "consistency_warning" in st.session_state: del st.session_state.consistency_warning
+                # 触发 app.py 中的 save_and_snapshot
+                st.session_state.trigger_manual_save = True
                 st.rerun()
 
             # --- 逻辑一致性预警展示 ---

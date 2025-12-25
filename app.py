@@ -13,9 +13,11 @@ from core.exceptions import LLMOperationError, ToolOperationError, VectorStoreOp
 # 引入 UI 组件
 from ui_components.writer_view import render_writer_view
 from ui_components.bible_view import render_bible_view
+from ui_components.insights_view import render_insights_view
 from ui_components.config_view import render_config_view
 from core.project_manager import ProjectManager
-from dataclasses import asdict, is_dataclass
+from core.schemas import ProjectContext
+from dataclasses import asdict, is_dataclass, fields
 
 # --- 初始化 ---
 load_environment()
@@ -24,16 +26,6 @@ app_logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Calliope AI 写作", page_icon="📚", layout="wide")
 
-# 定义需要持久化保存的 Session State 键名
-SAVE_KEYS = [
-    'project_name', 'world_bible', 'plan', 
-    'research_results', 'outline', 'drafts', 'drafting_index', 
-    'final_manuscript', 'outline_sections', 'user_prompt', 
-    'selected_tool_id', 'full_draft', 'project_writing_style_id', 
-    'project_writing_style_description', 'retrieved_docs',
-    'current_critique', 'critique_target_type'
-]
-
 # 定义需要缓冲更新的 Widget Key
 WIDGET_KEYS_TO_BUFFER = ["plan", "research_results", "outline"]
 
@@ -41,7 +33,10 @@ def save_and_snapshot():
     """保存项目状态到 SQLite 并创建数据库快照"""
     project_root = st.session_state.get('project_root')
     if project_root:
-        data_to_save = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
+        # 只保存 ProjectContext 中定义的业务字段，过滤掉 UI 控件状态
+        ctx_fields = {f.name for f in fields(ProjectContext)}
+        data_to_save = {k: v for k, v in st.session_state.items() if k in ctx_fields}
+        
         if sql_db.save_project_state_to_sql(project_root, data_to_save):
             ProjectManager.create_snapshot(project_root)
             st.session_state.last_save_time = datetime.now().strftime("%H:%M:%S")
@@ -49,7 +44,7 @@ def save_and_snapshot():
     return False
 
 def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
-    """带 Spinner 的步骤运行包装器"""
+    """带 Spinner 的步骤运行包装器 (解耦版)"""
     style_desc = st.session_state.get('project_writing_style_description', '')
     output_placeholder = st.empty()
     full_response = ""
@@ -59,22 +54,27 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
         full_response += chunk
         output_placeholder.markdown(full_response + "▌")
 
+    # 1. 将 UI 状态封装为领域上下文 (Decoupling point)
+    ctx_fields = {f.name for f in fields(ProjectContext)}
+    ctx_data = {k: v for k, v in st.session_state.items() if k in ctx_fields}
+    context = ProjectContext(**ctx_data)
+
     with st.spinner(spinner_text):
         try:
-            # 确保 collection_name 现在传递的是 project_root (为了兼容 Service 层接口)
-            # Service 层需要修改以接受 project_root，或者我们这里临时适配
-            # 更好的方式是 update session state 增加 collection_name = project_root
-            if 'collection_name' not in st.session_state and 'project_root' in st.session_state:
-                st.session_state['collection_name'] = st.session_state['project_root']
-
+            # 2. 调用业务流 (业务流完全不知道 st.session_state)
             result = workflow_manager.run_step(
-                step_name, st.session_state, full_config, style_desc, stream_callback=stream_callback
+                step_name, context, full_config, style_desc, stream_callback=stream_callback
             )
             
             if full_response: output_placeholder.markdown(full_response)
             else: output_placeholder.empty()
             
+            # 3. 将结果同步回 UI 状态
             if result:
+                # 清理已消耗的指令
+                if "refinement_instruction" in st.session_state:
+                    st.session_state.refinement_instruction = ""
+                
                 updates = {}
                 if isinstance(result, dict):
                     updates = result
@@ -118,7 +118,7 @@ def render_launcher():
         st.subheader("📂 打开现有项目")
         # 由于 Streamlit 的 input 限制，我们只能让用户输入路径
         # 或者列出某个默认目录下的文件夹
-        default_base_dir = os.path.abspath("./MyNovels")
+        default_base_dir = os.path.abspath("./data")
         os.makedirs(default_base_dir, exist_ok=True)
         
         st.caption(f"默认项目目录: {default_base_dir}")
@@ -167,7 +167,7 @@ def render_launcher():
                         st.error("创建失败，请检查日志。")
 
 def _load_project(project_path):
-    """加载项目并切换状态"""
+    """加载项目并切换状态 (带安全过滤)"""
     meta = ProjectManager.load_project_meta(project_path)
     state_data = sql_db.load_project_state_from_sql(project_path)
     
@@ -175,8 +175,17 @@ def _load_project(project_path):
     for k in list(st.session_state.keys()):
         del st.session_state[k]
     
+    # --- 安全过滤逻辑 (Sprint 2 增强) ---
+    # 只允许加载 ProjectContext 中定义的业务字段和几个必要的系统字段
+    ctx_fields = {f.name for f in fields(ProjectContext)}
+    system_keys = {"project_root", "project_name", "collection_name", "last_save_time", 
+                   "project_writing_style_id", "project_writing_style_description"}
+    allowed_keys = ctx_fields | system_keys
+    
+    safe_state_data = {k: v for k, v in state_data.items() if k in allowed_keys}
+    
     # 设置新状态
-    st.session_state.update(state_data)
+    st.session_state.update(safe_state_data)
     st.session_state['project_root'] = project_path
     st.session_state['project_name'] = meta.get('name', '未命名项目')
     st.session_state['collection_name'] = project_path # 兼容旧逻辑
@@ -194,14 +203,15 @@ def render_workspace(full_config):
             st.rerun()
             
         st.markdown("---")
-        if st.button("💾 手动保存", type="primary"):
+        if st.button("💾 手动保存", type="primary", use_container_width=True):
             save_and_snapshot()
             st.toast("✅ 已保存")
 
-    t1, t2, t4 = st.tabs(["🚀 创作中心", "📜 设定圣经", "⚙️ 配置"])
+    t1, t2, t3, t4 = st.tabs(["🚀 创作中心", "📜 设定圣经", "📈 剧情洞察", "⚙️ 配置"])
 
     with t1: render_writer_view(full_config, run_step_with_spinner)
     with t2: render_bible_view(st.session_state.collection_name, full_config, run_step_with_spinner)
+    with t3: render_insights_view(st.session_state.project_root)
     with t4: render_config_view(full_config)
 
 def main():
@@ -218,6 +228,11 @@ def main():
         key = st.session_state.clear_specific_refinement
         if key in st.session_state: st.session_state[key] = ""
         del st.session_state.clear_specific_refinement
+
+    # 手动触发保存 (由 UI 组件请求)
+    if st.session_state.get("trigger_manual_save"):
+        del st.session_state.trigger_manual_save
+        save_and_snapshot()
 
     # 路由逻辑
     if 'project_root' not in st.session_state:

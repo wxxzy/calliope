@@ -6,16 +6,41 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 
 @dataclass
-class ActionResult:
-    """通用业务执行结果"""
-    success: bool = True
-    message: str = ""
-    # 动态存储业务产出（如 plan, outline 等）
-    data: Dict[str, Any] = field(default_factory=dict)
+class ProjectContext:
+    """
+    项目运行时上下文 (领域模型)
+    该对象包含业务层所需的所有数据，与 UI 框架 (Streamlit) 彻底解耦。
+    """
+    project_root: str
+    project_name: str
+    world_bible: str = ""
+    plan: str = ""
+    research_results: str = ""
+    outline: str = ""
+    outline_sections: List[str] = field(default_factory=list)
+    drafts: List[str] = field(default_factory=list)
+    drafting_index: int = 0
+    final_manuscript: str = ""
+    
+    # 交互过程中的临时状态
+    user_prompt: str = ""
+    refinement_instruction: str = ""
+    selected_tool_id: str = "ddg_default"
+    section_to_write: str = ""
+    current_chapter_draft: str = ""
+    user_selected_docs: List[str] = field(default_factory=list)
+    
+    # 评审与校验状态
+    current_critique: str = ""
+    critique_target_type: str = "draft"
+    pending_triplets: List[Any] = field(default_factory=list)
+
+    def to_dict(self):
+        return asdict(self)
 
 @dataclass
 class WritingResult:
-    """写作业务专用结果"""
+    """写作业务执行结果"""
     plan: Optional[str] = None
     research_results: Optional[str] = None
     outline: Optional[str] = None
@@ -26,9 +51,10 @@ class WritingResult:
 
 @dataclass
 class KnowledgeResult:
-    """知识业务专用结果"""
+    """知识业务执行结果"""
     graph_updated: bool = False
     extracted_count: int = 0
     pending_triplets: Optional[List] = None
     current_critique: Optional[str] = None
     bible_synced: bool = False
+    extracted_timeline_event: Optional[Dict[str, Any]] = None

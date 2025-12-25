@@ -94,6 +94,51 @@ def get_chapter_count(project_root: str) -> int:
     finally:
         session.close()
 
+def save_timeline_event(project_root: str, event_data: dict):
+    """保存或更新时间轴事件"""
+    session = get_session(project_root)
+    try:
+        idx = event_data.get("chapter_index")
+        existing = session.query(TimelineEvent).filter_by(chapter_index=idx).first()
+        if existing:
+            existing.time_str = event_data.get("time")
+            existing.location = event_data.get("location")
+            existing.tension = event_data.get("tension", 5.0)
+            existing.event_desc = event_data.get("summary")
+        else:
+            new_event = TimelineEvent(
+                chapter_index=idx,
+                time_str=event_data.get("time"),
+                location=event_data.get("location"),
+                tension=event_data.get("tension", 5.0),
+                event_desc=event_data.get("summary")
+            )
+            session.add(new_event)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"保存时间轴事件失败: {e}")
+    finally:
+        session.close()
+
+def get_timeline(project_root: str):
+    """获取项目完整时间轴数据"""
+    session = get_session(project_root)
+    try:
+        events = session.query(TimelineEvent).order_by(TimelineEvent.chapter_index).all()
+        return [
+            {
+                "chapter_index": e.chapter_index,
+                "time": e.time_str,
+                "location": e.location,
+                "tension": e.tension,
+                "summary": e.event_desc
+            } for e in events
+        ]
+    finally:
+        session.close()
+
+
 # --- 状态与 SQL 同步高级操作 ---
 
 def save_project_state_to_sql(project_root: str, state_dict: dict):
@@ -108,7 +153,7 @@ def save_project_state_to_sql(project_root: str, state_dict: dict):
             # 特殊处理章节列表：存入 chapters 表
             if k == 'drafts' and isinstance(v, list):
                 for idx, content in enumerate(v):
-                    # 检查是否已存在
+                    if not content: continue
                     ch = session.query(Chapter).filter_by(index=idx+1).first()
                     if ch:
                         ch.content = content
@@ -117,8 +162,17 @@ def save_project_state_to_sql(project_root: str, state_dict: dict):
                         session.add(Chapter(index=idx+1, content=content, word_count=len(content)))
             
             # 其他字段存入设置表
-            else:
-                val_str = json.dumps(v, ensure_ascii=False) if not isinstance(v, str) else v
+            elif isinstance(v, (str, int, float, bool)):
+                setting = session.query(ProjectSetting).filter_by(key=k).first()
+                val_str = str(v) if not isinstance(v, str) else v
+                if setting:
+                    setting.value = val_str
+                else:
+                    session.add(ProjectSetting(key=k, value=val_str))
+            
+            # 复杂对象（List/Dict）序列化为 JSON 存储
+            elif isinstance(v, (list, dict)):
+                val_str = json.dumps(v, ensure_ascii=False)
                 setting = session.query(ProjectSetting).filter_by(key=k).first()
                 if setting:
                     setting.value = val_str
@@ -154,7 +208,11 @@ def load_project_state_from_sql(project_root: str) -> dict:
         chapters = session.query(Chapter).order_by(Chapter.index).all()
         if chapters:
             state_data['drafts'] = [c.content for c in chapters]
+            # 这里的 index 是关键，必须反映真实的撰写进度
             state_data['drafting_index'] = len(chapters)
+        else:
+            state_data['drafts'] = []
+            state_data['drafting_index'] = 0
             
         return state_data
     except Exception as e:

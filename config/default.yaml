@@ -41,15 +41,6 @@ models:
 steps:
   planner: gemini-2.0-flash
   critic: gemini-2.0-flash
-  graph_generator: gemini-2.0-flash
-  researcher: gpt-4o-mini
-  summarizer: doubao_seed
-  outliner: doubao_seed
-  drafter: doubao_seed
-  reviser: doubao_seed
-  query_rewriter: gemini-2.0-flash
-  chapter_summarizer: doubao_seed
-  community_namer: gemini-2.0-flash
   consistency_sentinel: gemini-2.0-flash
 embeddings:
   openai_embedding:

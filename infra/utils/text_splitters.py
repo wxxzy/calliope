@@ -6,7 +6,7 @@ import yaml
 import importlib
 from functools import lru_cache
 import logging
-from config_manager import CONFIG # 导入全局CONFIG
+from config.loader import CONFIG # 导入全局CONFIG
 
 logger = logging.getLogger(__name__) # 获取当前模块的logger
 
@@ -25,17 +25,17 @@ def _load_yaml(file_path: str):
 @lru_cache(maxsize=None)
 def get_splitter_templates():
     """加载并返回文本切分器模板。"""
-    return _load_yaml("text_splitter_templates.yaml")
+    return _load_yaml("config/templates/text_splitters.yaml")
 
 def get_user_splitters_config():
     """加载并返回用户文本切分器配置。"""
     # 每次都重新加载，以反映UI上的动态修改
-    return _load_yaml("user_text_splitters.yaml")
+    return _load_yaml("config/user_text_splitters.yaml")
 
 def save_user_splitters_config(config_data: dict):
     """保存用户文本切分器配置。"""
     try:
-        with open("user_text_splitters.yaml", "w", encoding="utf-8") as f:
+        with open("config/user_text_splitters.yaml", "w", encoding="utf-8") as f:
             yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
         logger.info(f"用户切分器配置已成功保存到 user_text_splitters.yaml。")
     except Exception as e:

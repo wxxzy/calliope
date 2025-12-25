@@ -4,13 +4,13 @@
 """
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
-from llm_provider import get_llm
+from infra.llm.factory import get_llm
 from prompts import (
     QUERY_REWRITER_PROMPT, CHAPTER_SUMMARIZER_PROMPT, 
-    CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT, COMMUNITY_NAMING_PROMPT,
+    CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT,
     CONSISTENCY_CHECK_PROMPT
 )
-from vector_store_manager import retrieve_context
+from infra.storage.vector_store import retrieve_context
 from chains.base import get_writing_style_instruction
 import logging
 
@@ -41,9 +41,7 @@ def create_graph_extraction_chain():
     """创建知识图谱提取链：从文本中抽取结构化的实体关系三元组"""
     return GRAPH_EXTRACTION_PROMPT | get_llm("graph_generator", temperature=0.1) | JsonOutputParser()
 
-def create_community_naming_chain():
-    """创建派系命名链：根据角色分组信息生成具有文学感的组织名称"""
-    return COMMUNITY_NAMING_PROMPT | get_llm("community_namer", temperature=0.3) | StrOutputParser()
+
 
 def create_consistency_sentinel_chain():
     """创建逻辑一致性校验链：识别正文与图谱设定之间的冲突"""

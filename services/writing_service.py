@@ -9,12 +9,12 @@ from chains import (
     create_chapter_summary_chain, retrieve_with_rewriting,
     create_research_chain
 )
-import vector_store_manager
-import text_splitter_provider
-import re_ranker_provider
-import tool_provider
+from infra.storage import vector_store as vector_store_manager
+from infra.utils import text_splitters as text_splitter_provider
+from infra.llm import rerankers as re_ranker_provider
+from infra.tools import factory as tool_provider
 from core.schemas import WritingResult
-from custom_exceptions import VectorStoreOperationError
+from core.exceptions import VectorStoreOperationError
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class WritingService:
         为章节撰写检索上下文 (Tiered Memory + Hybrid RAG 2.0)。
         实现真正的分层记忆检索。
         """
-        import graph_store_manager
+        from infra.storage import graph_store as graph_store_manager
         from core.schemas import WritingResult # 局部导入以避免潜在循环
         
         collection_name = state.get("collection_name")
@@ -193,7 +193,11 @@ class WritingService:
         from chains import create_chapter_summary_chain
         res = create_chapter_summary_chain().invoke({"chapter_text": content})
         text_splitter = text_splitter_provider.get_text_splitter(full_config.get('active_text_splitter', 'default_recursive'))
-        final_meta = {"chapter_index": state.get("drafting_index", 0) + 1, "document_type": "chapter_summary"}
+        final_meta = {
+            "chapter_index": state.get("drafting_index", 0) + 1, 
+            "document_type": "chapter_summary",
+            "original_word_count": len(content)
+        }
         for k, v in res.get("metadata", {}).items():
             final_meta[k] = ", ".join(v) if isinstance(v, list) else v
         vector_store_manager.index_text(state.get("collection_name"), res.get("summary", ""), text_splitter, metadata=final_meta)

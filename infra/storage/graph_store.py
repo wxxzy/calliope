@@ -275,64 +275,13 @@ def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str,
                     
     return conflicts
 
-def get_community_names_path(collection_name: str) -> str:
-    """获取派系名称缓存路径"""
-    ensure_graph_dir()
-    safe_name = "".join([c for c in collection_name if c.isalnum() or c in ('_', '-')])
-    return os.path.join(GRAPH_DIR, f"{safe_name}_community_names.json")
 
-def load_cached_community_names(collection_name: str) -> Dict[str, str]:
-    """加载缓存的派系名称"""
-    path = get_community_names_path(collection_name)
-    if os.path.exists(path):
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
 
-def save_community_names(collection_name: str, names: Dict[str, str]):
-    """保存派系名称到缓存"""
-    path = get_community_names_path(collection_name)
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(names, f, ensure_ascii=False, indent=2)
 
-def generate_and_cache_community_names(collection_name: str, communities: Dict[str, List[str]], naming_chain, world_bible: str):
-    """
-    调用 AI 为所有派系命名，并存入缓存。
-    确保命名的唯一性。
-    """
-    cached_names = {}
-    used_pretty_names = []
-    
-    context = world_bible[:1000] if world_bible else "无背景设定"
-    
-    for temp_id, members in communities.items():
-        try:
-            # 注入已使用的名称，防止重复
-            input_data = {
-                "members": ", ".join(members),
-                "context": f"{context}\n\n注意：以下名称已被其他派系占用，请不要重复使用：{', '.join(used_pretty_names)}"
-            }
-            pretty_name = naming_chain.invoke(input_data)
-            pretty_name = pretty_name.strip().strip('"').strip("'")
-            
-            # 简单的排重逻辑：如果 AI 还是给了一样的，加个后缀
-            final_name = pretty_name
-            count = 1
-            while final_name in used_pretty_names:
-                final_name = f"{pretty_name}_{count}"
-                count += 1
-            
-            cached_names[temp_id] = final_name
-            used_pretty_names.append(final_name)
-        except Exception as e:
-            logger.error(f"命名派系 {temp_id} 失败: {e}")
-            cached_names[temp_id] = temp_id # 兜底用原始 ID
-            
-    save_community_names(collection_name, cached_names)
-    return cached_names
+
+
+
+
 
 def get_graph_stats(collection_name: str) -> Dict:
 # ... (保持不变) ...

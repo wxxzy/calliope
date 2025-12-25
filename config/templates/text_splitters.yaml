@@ -25,7 +25,7 @@ markdown:
 
 # 我们自定义的中文优化切分器
 chinese_optimized:
-  class: "custom_splitters.ChineseOptimizedTextSplitter"
+  class: "infra.utils.custom_splitters.ChineseOptimizedTextSplitter"
   params:
     chunk_size: "int"
     chunk_overlap: "int"
@@ -34,7 +34,7 @@ chinese_optimized:
 # 使用 sentence-transformers 嵌入模型和语义相似性进行文本切分。
 # 嵌入模型由 embedding_provider 动态提供，取决于 active_embedding_model 配置。
 semantic_chunker:
-  class: "custom_splitters.SemanticTextSplitter"
+  class: "infra.utils.custom_splitters.SemanticTextSplitter"
   params:
     max_chunk_size: "int" # 每个块的最大单词数
     similarity_threshold: "float" # 块切分的相似度阈值

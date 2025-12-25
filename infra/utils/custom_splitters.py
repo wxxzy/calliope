@@ -2,7 +2,7 @@ import logging
 from typing import List
 from langchain_text_splitters import TextSplitter
 from semantic_chunking import SemanticChunker
-from embedding_provider import get_embedding_model_name, get_embedding_model_config
+from infra.llm.embeddings import get_embedding_model_name, get_embedding_model_config
 
 logger = logging.getLogger(__name__)
 

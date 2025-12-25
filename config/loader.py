@@ -17,9 +17,10 @@ def get_resource_path(relative_path: str) -> str:
 
     return os.path.join(base_path, relative_path)
 
-CONFIG_PATH = get_resource_path("config.yaml")
-USER_CONFIG_PATH = get_resource_path("user_config.yaml")
-PROVIDER_TEMPLATES_PATH = get_resource_path("provider_templates.yaml")
+CONFIG_PATH = get_resource_path("config/default.yaml")
+USER_CONFIG_PATH = get_resource_path("config/user_config.yaml")
+MODEL_TEMPLATES_PATH = get_resource_path("config/templates/models.yaml")
+RE_RANKER_TEMPLATES_PATH = get_resource_path("config/templates/re_rankers.yaml")
 
 def _merge_configs(base_config: dict, user_config: dict) -> dict:
     """
@@ -110,15 +111,30 @@ def load_provider_templates() -> dict:
     加载并解析 provider_templates.yaml 文件。
     """
     try:
-        if not os.path.exists(PROVIDER_TEMPLATES_PATH):
-            logger.warning(f"提供商模板文件 {PROVIDER_TEMPLATES_PATH} 未找到，返回空模板。")
+        if not os.path.exists(MODEL_TEMPLATES_PATH):
+            logger.warning(f"提供商模板文件 {MODEL_TEMPLATES_PATH} 未找到，返回空模板。")
             return {}
-        with open(PROVIDER_TEMPLATES_PATH, "r", encoding="utf-8") as f:
+        with open(MODEL_TEMPLATES_PATH, "r", encoding="utf-8") as f:
             templates = yaml.safe_load(f)
         return templates if templates else {}
     except yaml.YAMLError as e:
-        logger.error(f"解析 {PROVIDER_TEMPLATES_PATH} 文件失败: {e}", exc_info=True)
-        raise ValueError(f"错误: 解析 {PROVIDER_TEMPLATES_PATH} 文件失败: {e}")
+        logger.error(f"解析 {MODEL_TEMPLATES_PATH} 文件失败: {e}", exc_info=True)
+        raise ValueError(f"错误: 解析 {MODEL_TEMPLATES_PATH} 文件失败: {e}")
+
+def load_re_ranker_templates() -> dict:
+    """
+    加载并解析 re_ranker_templates.yaml 文件。
+    """
+    try:
+        if not os.path.exists(RE_RANKER_TEMPLATES_PATH):
+            logger.warning(f"重排器模板文件 {RE_RANKER_TEMPLATES_PATH} 未找到，返回空模板。")
+            return {}
+        with open(RE_RANKER_TEMPLATES_PATH, "r", encoding="utf-8") as f:
+            templates = yaml.safe_load(f)
+        return templates if templates else {}
+    except yaml.YAMLError as e:
+        logger.error(f"解析 {RE_RANKER_TEMPLATES_PATH} 文件失败: {e}", exc_info=True)
+        raise ValueError(f"错误: 解析 {RE_RANKER_TEMPLATES_PATH} 文件失败: {e}")
 
 def get_all_model_templates() -> dict:
     """

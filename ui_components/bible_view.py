@@ -3,7 +3,7 @@
 v6.0 合并版：整合了文字设定、交互式图谱以及实体关系管理。
 """
 import streamlit as st
-import graph_store_manager
+from infra.storage import graph_store as graph_store_manager
 import networkx as nx
 import pandas as pd
 from streamlit_agraph import agraph, Node, Edge, Config
@@ -120,13 +120,12 @@ def render_bible_view(collection_name, full_config, run_step_with_spinner_func):
                 st.write("**实体清单与清理**")
                 nodes_data = []
                 communities = graph_store_manager.detect_communities(collection_name)
-                cached_names = graph_store_manager.load_cached_community_names(collection_name)
                 
                 for node in G.nodes():
                     comm_id = next((n for n, m in communities.items() if node in m), "未知")
                     nodes_data.append({
                         "实体名": node,
-                        "所属派系": cached_names.get(comm_id, comm_id),
+                        "所属派系": comm_id,
                         "关系深度": G.degree(node)
                     })
                 

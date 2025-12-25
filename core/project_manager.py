@@ -5,9 +5,9 @@
 import os
 import re
 import logging
-import vector_store_manager
-import graph_store_manager
-import state_manager
+from infra.storage import vector_store as vector_store_manager
+from infra.storage import graph_store as graph_store_manager
+from infra.storage import state_store as state_manager
 import networkx as nx
 import shutil
 from datetime import datetime
@@ -63,30 +63,9 @@ class ProjectManager:
         except Exception as e:
             logger.error(f"Snapshot cleanup failed: {e}")
 
-    @staticmethod
-    def save_branch(internal_name: str, branch_name: str):
-        """
-        保存一个命名的剧情分支快照。
-        """
-        os.makedirs(SNAPSHOT_DIR, exist_ok=True)
-        source_path = os.path.join(state_manager.PROJECT_STATE_DIR, f"{internal_name}.json")
-        if not os.path.exists(source_path): return False
-        
-        target_path = os.path.join(SNAPSHOT_DIR, f"{internal_name}_branch_{branch_name}.json")
-        try:
-            shutil.copy2(source_path, target_path)
-            return True
-        except Exception:
-            return False
 
-    @staticmethod
-    def list_branches(internal_name: str):
-        """
-        列出项目的所有命名分支。
-        """
-        if not os.path.exists(SNAPSHOT_DIR): return []
-        files = [f for f in os.listdir(SNAPSHOT_DIR) if f.startswith(f"{internal_name}_branch_") and f.endswith(".json")]
-        return [f.replace(f"{internal_name}_branch_", "").replace(".json", "") for f in files]
+
+
 
     @staticmethod
     def list_projects():
@@ -164,10 +143,6 @@ class ProjectManager:
         # 2. 删除图谱数据文件
         graph_path = graph_store_manager.get_graph_path(internal_name)
         if os.path.exists(graph_path): os.remove(graph_path)
-        
-        # 2. 删除派系名称缓存文件
-        name_path = graph_store_manager.get_community_names_path(internal_name)
-        if os.path.exists(name_path): os.remove(name_path)
         
         # 3. 删除项目 JSON 状态文件
         state_path = os.path.join(state_manager.PROJECT_STATE_DIR, f"{internal_name}.json")

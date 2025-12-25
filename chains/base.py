@@ -1,4 +1,4 @@
-from llm_provider import get_llm
+from infra.llm.factory import get_llm
 
 def get_writing_style_instruction(writing_style: str) -> str:
     """统一生成写作风格指令"""

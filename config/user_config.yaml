@@ -14,7 +14,6 @@ steps:
   reviser: doubao_seed
   query_rewriter: doubao_seed
   chapter_summarizer: doubao_seed
-  community_namer: doubao_seed
   consistency_sentinel: doubao_seed
 embeddings:
   my_custom_embedding:
@@ -31,5 +30,6 @@ re_rankers:
     model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
 active_re_ranker_id: my_reranker
 rag:
-  recall_k: 10
+  recall_k: 8
   rerank_k: 3
+active_text_splitter: my_semantic_splitter

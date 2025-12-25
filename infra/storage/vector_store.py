@@ -6,7 +6,7 @@ import os
 import chromadb
 from typing import List, Optional
 from langchain_chroma import Chroma
-from embedding_provider import get_embedding_model
+from infra.llm.embeddings import get_embedding_model
 import logging
 
 logger = logging.getLogger(__name__)
@@ -95,9 +95,12 @@ def index_text(collection_name: str, text: str, text_splitter, metadata: dict = 
     
     # 3. 添加到向量数据库
     metadatas = [metadata] * len(chunks) if metadata else None
-    vectorstore.add_texts(texts=chunks, metadatas=metadatas)
-    
-    logger.info(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
+    logger.info(f"正在索引文本到 '{collection_name}'。Metadata: {metadata}")
+    try:
+        vectorstore.add_texts(texts=chunks, metadatas=metadatas)
+        logger.info(f"成功将 {len(chunks)} 个文本块索引到集合 '{collection_name}'。")
+    except Exception as e:
+        logger.error(f"索引文本到 '{collection_name}' 失败: {e}", exc_info=True)
 
 # --- 检索 ---
 def retrieve_context(collection_name: str, query: str, recall_k: int = 20, re_ranker=None, rerank_k: int = 5, filter_dict: dict = None) -> list[str]:
@@ -154,7 +157,7 @@ def get_collection_data(collection_name: str) -> dict:
     try:
         collection = client.get_collection(name=collection_name)
         data = collection.get(include=['metadatas', 'documents'])
-        logger.debug(f"成功从集合 '{collection_name}' 获取 {len(data['ids'])} 条数据。")
+        logger.info(f"从集合 '{collection_name}' 获取到 {len(data.get('ids', []))} 条数据。Metadata 示例: {data.get('metadatas', [])[:1]}")
         return data
     except ValueError:
         logger.warning(f"集合 '{collection_name}' 不存在，无法获取数据。")

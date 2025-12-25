@@ -5,7 +5,7 @@ Embedding Provider
 import os
 import importlib
 from functools import lru_cache
-from config_manager import CONFIG, load_provider_templates
+from config.loader import CONFIG, load_provider_templates
 import logging
 
 logger = logging.getLogger(__name__)

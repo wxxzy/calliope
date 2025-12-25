@@ -1,7 +1,7 @@
 import streamlit as st
-import config_manager
-import re_ranker_provider
-import text_splitter_provider
+from config import loader as config_manager
+from infra.llm import rerankers as re_ranker_provider
+from infra.utils import text_splitters as text_splitter_provider
 
 def render_config_view(full_config):
     st.header("系统配置")

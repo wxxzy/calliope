@@ -2,17 +2,16 @@ import streamlit as st
 import logging
 from datetime import datetime
 from config import load_environment
-import config_manager
-import vector_store_manager
-import workflow_manager
-import state_manager
-import logger_config
-from custom_exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError
+from config import loader as config_manager
+from infra.storage import vector_store as vector_store_manager
+from services import workflow as workflow_manager
+from infra.storage import state_store as state_manager
+from core import logger as logger_config
+from core.exceptions import LLMOperationError, ToolOperationError, VectorStoreOperationError, ConfigurationError
 
-# 引入 UI 组件 (v6.0 合并版)
+# 引入 UI 组件
 from ui_components.writer_view import render_writer_view
 from ui_components.bible_view import render_bible_view
-from ui_components.insights_view import render_insights_view
 from ui_components.config_view import render_config_view
 from core.project_manager import ProjectManager
 from dataclasses import asdict, is_dataclass
@@ -50,6 +49,9 @@ def save_and_snapshot():
             return True
     return False
 
+# 定义需要缓冲更新的 Widget Key (防止直接修改导致的 Streamlit 报错)
+WIDGET_KEYS_TO_BUFFER = ["plan", "research_results", "outline"]
+
 def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
     """带 Spinner 的步骤运行包装器 (传递给组件使用)"""
     style_desc = st.session_state.get('project_writing_style_description', '')
@@ -71,14 +73,23 @@ def run_step_with_spinner(step_name: str, spinner_text: str, full_config: dict):
             
             # --- 显式状态更新 (副作用隔离的终点) ---
             if result:
+                updates = {}
                 # 兼容旧的字典返回
                 if isinstance(result, dict):
-                    st.session_state.update(result)
+                    updates = result
                 # 核心：处理新的强类型对象
                 elif is_dataclass(result):
-                    # 仅更新非 None 的值，防止抹除 UI 状态
                     updates = {k: v for k, v in asdict(result).items() if v is not None}
-                    st.session_state.update(updates)
+                
+                # 安全更新逻辑：针对已渲染 Widget 的 Key 进行缓冲处理
+                safe_updates = {}
+                for k, v in updates.items():
+                    if k in WIDGET_KEYS_TO_BUFFER:
+                        safe_updates[f"new_{k}"] = v
+                    else:
+                        safe_updates[k] = v
+                
+                st.session_state.update(safe_updates)
 
             # 关键步骤自动保存 (保持)
             critical_steps = ["plan", "outline", "generate_draft", "generate_revision", "update_bible"]
@@ -164,17 +175,7 @@ def main():
 
             if st.button("💾 手动保存并备份", type="primary", width='stretch'):
                 if save_and_snapshot(): st.toast("✅ 快照已手动生成")
-            
-            # 分支切换请求处理
-            if st.session_state.get("load_branch_request"):
-                branch_name = st.session_state.load_branch_request
-                branch_id = f"{st.session_state.collection_name}_branch_{branch_name}"
-                loaded = state_manager.load_state_from_file(branch_id)
-                if loaded:
-                    st.session_state.update(loaded)
-                    st.toast(f"已回溯到分支: {branch_name}")
-                del st.session_state.load_branch_request
-                st.rerun()
+
 
             st.markdown("---")
             with st.expander("☢️ 危险区域", expanded=False):
@@ -193,11 +194,10 @@ def main():
     st.title(f"项目: {st.session_state.project_name}")
     
     # v6.0 合并版 Tab 布局
-    t1, t2, t3, t4 = st.tabs(["🚀 创作中心", "📜 设定圣经", "📈 剧情洞察", "⚙️ 配置"])
+    t1, t2, t4 = st.tabs(["🚀 创作中心", "📜 设定圣经", "⚙️ 配置"])
 
     with t1: render_writer_view(full_config, run_step_with_spinner)
     with t2: render_bible_view(st.session_state.collection_name, full_config, run_step_with_spinner)
-    with t3: render_insights_view(st.session_state.collection_name)
     with t4: render_config_view(full_config)
 
 if __name__ == "__main__":

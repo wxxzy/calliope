@@ -5,7 +5,7 @@
 import os
 import importlib
 from functools import lru_cache
-from config_manager import CONFIG, load_provider_templates
+from config.loader import CONFIG, load_re_ranker_templates
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 @lru_cache(maxsize=1)
 def get_re_ranker_provider_templates():
     """缓存重排器提供商模板。"""
-    templates = load_provider_templates() # 这里假定 provider_templates.yaml 也有 re_rankers 部分
-    return templates.get("re_rankers", {})
+    return load_re_ranker_templates()
 
 def _get_class_from_path(class_path: str):
     """根据字符串路径动态导入类。"""

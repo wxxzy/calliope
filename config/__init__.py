@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
-import logging # 导入 logging 模块
+import logging
 
-logger = logging.getLogger(__name__) # 获取当前模块的logger
+logger = logging.getLogger(__name__)
 
 def load_environment():
     """
@@ -9,4 +9,3 @@ def load_environment():
     """
     load_dotenv()
     logger.debug("环境变量已从 .env 文件加载。")
-

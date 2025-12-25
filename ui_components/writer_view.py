@@ -3,10 +3,10 @@
 负责渲染 Tab 1 内容，包含从规划、大纲到撰写和导出的全过程 UI 交互。
 """
 import streamlit as st
-import vector_store_manager
-import text_splitter_provider
-import tool_provider
-import export_manager
+from infra.storage import vector_store as vector_store_manager
+from infra.utils import text_splitters as text_splitter_provider
+from infra.tools import factory as tool_provider
+from infra.utils import export as export_manager
 
 def render_writer_view(full_config, run_step_with_spinner_func):
     """

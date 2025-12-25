@@ -48,6 +48,6 @@ exa_search:
 
 # 我们自己实现的自定义搜索函数 (tools.py中定义)
 custom_web_search_function:
-  function: "tools.custom_web_search"
+  function: "infra.tools.definitions.custom_web_search"
   params:
     engine: "string" # e.g., 'tavily' or 'google'

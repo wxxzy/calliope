@@ -3,12 +3,12 @@
 处理知识图谱提取、派系识别、命名及统一库同步。
 """
 import logging
-import graph_store_manager
-import vector_store_manager
-import text_splitter_provider
+from infra.storage import graph_store as graph_store_manager
+from infra.storage import vector_store as vector_store_manager
+from infra.utils import text_splitters as text_splitter_provider
 from core.schemas import KnowledgeResult
 from chains import (
-    create_graph_extraction_chain, create_community_naming_chain, 
+    create_graph_extraction_chain, 
     create_critic_chain, create_consistency_sentinel_chain
 )
 
@@ -64,12 +64,7 @@ class KnowledgeService:
             logger.error(f"图谱提取失败: {e}")
         return KnowledgeResult()
 
-    @staticmethod
-    def run_naming(state: dict, collection_name: str, communities: dict):
-        """命名逻辑保持原状，因为它直接操作磁盘缓存"""
-        chain = create_community_naming_chain()
-        world_bible = state.get("world_bible", "")
-        return graph_store_manager.generate_and_cache_community_names(collection_name, communities, chain, world_bible)
+
 
     @staticmethod
     def run_consistency_check(collection_name: str, text: str):
@@ -97,7 +92,6 @@ class KnowledgeService:
             if not mentioned: return None
             
             communities = graph_store_manager.detect_communities(collection_name)
-            cached_names = graph_store_manager.load_cached_community_names(collection_name)
             
             entities_data = []
             conflicts = []
@@ -105,7 +99,7 @@ class KnowledgeService:
 
             for entity in mentioned:
                 comm_id = next((name for name, nodes in communities.items() if entity in nodes), "未知")
-                comm_name = cached_names.get(comm_id, comm_id)
+                comm_name = comm_id
                 
                 neighbors = list(G.neighbors(entity))
                 relations = []

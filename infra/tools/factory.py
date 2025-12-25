@@ -26,17 +26,17 @@ def _load_yaml(file_path: str):
 
 def get_tool_templates():
     """加载并返回工具模板。"""
-    return _load_yaml("tool_templates.yaml")
+    return _load_yaml("config/templates/tools.yaml")
 
 def get_user_tools_config():
     """加载并返回用户工具配置。"""
     # 每次都重新加载，以反映UI上的动态修改
-    return _load_yaml("user_tools.yaml")
+    return _load_yaml("config/user_tools.yaml")
 
 def save_user_tools_config(config_data: dict):
     """保存用户工具配置。"""
     try:
-        with open("user_tools.yaml", "w", encoding="utf-8") as f:
+        with open("config/user_tools.yaml", "w", encoding="utf-8") as f:
             yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
         logger.info(f"用户工具配置已成功保存到 user_tools.yaml。")
     except Exception as e:

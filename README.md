@@ -1,39 +1,96 @@
-# Calliope - AI 分步式长篇写作智能体 (v6.0)
+# Calliope - AI 分步式长篇写作智能体 (v7.0 Refactored)
 
-Calliope 是一个为专业创作者设计的 AI 写作工作站。它通过深度分层的 **Service-Oriented** 架构，将 **Hybrid RAG 2.0**、**故事时空年表**与**多重叙事宇宙**管理融为一体，旨在为长篇小说、深度报告提供逻辑严密、文风一致的创作环境。
+Calliope 是一个为专业创作者设计的 AI 写作工作站。它采用 **领域驱动设计 (DDD)** 重构了底层架构，将 **Hybrid RAG 2.0**（混合检索）与 **World Bible**（设定圣经）深度集成，旨在解决长篇创作中“记忆遗忘”与“逻辑冲突”两大核心痛点。
 
 ## ✨ 核心特性
 
-*   **双路混合检索 2.0 (Hybrid RAG)**:
-    *   **分层记忆管理**: 独创“强记忆（近 3 章强制携带）+ 弱记忆（全书 RAG 召回）”机制，兼顾剧情连贯性与长线伏笔。
-    *   **实体导向检索**: 自动识别场景实体，通过知识图谱邻域导航向量库，消除设定冲突。
-    *   **覆盖式百科索引**: 确保世界观设定更新后即刻生效，不留冗余旧数据。
-*   **智能时空年表 (Chronology & Timeline)**:
-    *   **自动时空提取**: 每一章自动识别故事时间、地理位置及戏剧张力指数。
-    *   **交互式年表**: 提供可视化故事脉络，支持手动修正 AI 提取的时间偏差。
-    *   **时空过滤检索**: 支持“只参考 1990 年、发生在地堡内”的特定范围检索。
-*   **设定管理中心 (World Bible 3.0)**:
-    *   **三位一体编辑器**: 支持“文字描述、可视化关系网、交互式数据表”三种模式管理设定。
-    *   **逻辑一致性哨兵**: 自动对比生成内容与图谱硬设定，实时预警逻辑冲突。
-    *   **Leiden 派系识别**: 自动识别阵营，并由 AI 赋予具有文学感的派系名称。
-*   **创作洞察 (Plot Analytics)**:
-    *   **张力曲线图**: 可视化全书节奏，识别剧情平淡期与高潮点。
-    *   **戏份热力图**: 统计各角色/实体的出现频率，平衡群像剧戏份。
-*   **多重叙事宇宙 (Multi-Verse)**:
-    *   **剧情分支管理**: 保存不同版本的剧情走向，支持一键切换存档点。
-    *   **自动快照**: 关键步骤自动备份，安全感拉满。
+### 1. 深度写作工作流 (Deep Writing Workflow)
+Calliope 不只是简单的聊天机器人，它遵循专业作家的创作流：
+*   **灵感规划 (Plan)**: 交互式生成创作蓝图，支持自动网络研究 (Web Search) 补充背景资料。
+*   **结构化大纲 (Outline)**: 基于计划生成层级分明的章节大纲，支持 AI 评审与迭代优化。
+*   **沉浸式撰写 (Drafting)**: 
+    *   **分层记忆 (Tiered Memory)**: 自动加载“强记忆”（近 3 章摘要）维持连贯性，并按需召回“弱记忆”（远期伏笔）。
+    *   **上下文感知**: 写作时自动感知当前场景涉及的实体，从图谱中提取背景设定。
+*   **总编级修订 (Revision)**: 全文写完后，由 AI 总编进行统一润色，修复文风不一致和逻辑漏洞。
+
+### 2. 双路混合检索 2.0 (Hybrid RAG)
+摒弃单一的向量检索，采用“向量 + 图谱”双引擎：
+*   **向量检索 (Vector Store)**: 基于 ChromaDB，存储章节摘要、正文片段和百科设定。支持按时间、地点元数据过滤。
+*   **知识图谱 (Knowledge Graph)**: 基于 NetworkX，存储人物、地点、物品之间的显性关系（如“A 是 B 的父亲”）。
+*   **重排序 (Re-ranking)**: 集成 Cross-Encoder 模型，对召回的记忆片段进行语义重排，确保 AI 看到的上下文精准无误。
+
+### 3. 设定管理中心 (World Bible)
+让 AI 真正“记住”你的设定：
+*   **动态图谱**: 支持从纯文本设定（如世界观文档）自动提取实体关系三元组，构建可视化关系网。
+*   **逻辑一致性哨兵 (Consistency Sentinel)**: 实时监控生成的每一章内容，自动对比图谱中的硬设定（如“某人已死”、“某物在某地”），若发现冲突立即预警。
+*   **交互式维护**: 提供可视化界面手动修正实体关系，或审核 AI 自动提取的新设定。
+
+### 4. 模块化配置与架构
+*   **模型无关性**: 通过 YAML 模板支持 OpenAI, Anthropic, Google, Ollama 等任意 LLM 后端。
+*   **DDD 分层架构**: 清晰分离了基础设施 (`infra`)、领域核心 (`core`) 和业务服务 (`services`)，易于扩展和维护。
 
 ## 🚀 技术架构
 
 ```text
-[ UI Layer ]       Streamlit v6.0 Modular Components (Writer, Bible, Insights, Config)
+[ UI Layer ]       Streamlit (Writer, Bible, Config Views)
       |
-[ Service Layer ]  WritingService, KnowledgeService (Encapsulated Business Logic)
+[ Service Layer ]  WritingService, KnowledgeService (业务逻辑编排)
       |
-[ Engine Layer ]   Hybrid RAG (ChromaDB + NetworkX), Leiden Algorithm
+[ Infra Layer ]    LLM Factory, VectorStore(Chroma), GraphStore(NetworkX)
       |
-[ AI Layer ]       LCEL Chains (One Step, One Model Configuration)
+[ Config Center ]  YAML Configuration & Templates
 ```
 
----
+## 📂 目录结构说明
+
+```text
+D:\workspace\Creative\20251208\
+├── app.py                      # 应用程序启动入口
+├── config/                     # 统一配置中心
+│   ├── default.yaml            # 默认系统配置
+│   ├── user_config.yaml        # 用户自定义配置 (模型、Prompt参数等)
+│   └── templates/              # 工具与模型模板定义
+├── core/                       # 领域核心定义
+│   ├── schemas.py              # 强类型数据契约
+│   └── exceptions.py           # 自定义异常体系
+├── infra/                      # 基础设施层 (技术实现)
+│   ├── llm/                    # LLM, Embedding, Reranker 工厂
+│   ├── storage/                # ChromaDB 与 NetworkX 存储实现
+│   └── tools/                  # 搜索工具与自定义函数
+├── services/                   # 业务服务层
+│   ├── writing_service.py      # 写作流程协调
+│   └── knowledge_service.py    # 图谱构建与一致性检查
+├── chains/                     # LangChain 编排层 (Prompt Chains)
+└── ui_components/              # Streamlit 界面组件
+```
+
+## 🛠️ 快速开始
+
+### 1. 环境准备
+确保已安装 Python 3.10+
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. 配置模型
+复制配置模板并编辑：
+
+```bash
+cp config/default.yaml.example config/user_config.yaml
+```
+
+在 `config/user_config.yaml` 中填入你的 API Key（支持 OpenAI, Anthropic 等）和偏好的模型名称。
+
+### 3. 启动应用
+
+```bash
+streamlit run app.py
+```
+
+## ⚠️ 注意事项
+*   **数据安全**: 项目采用本地文件存储（SQLite + JSON），请定期备份 `data/` 目录。
+*   **Token 消耗**: 长篇写作涉及大量上下文读写，建议关注 API 使用量，或配置本地 LLM (Ollama) 以降低成本。
+
+--- 
 **License:** MIT

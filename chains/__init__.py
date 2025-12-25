@@ -6,7 +6,7 @@ from chains.research import create_research_chain
 from chains.knowledge import (
     create_query_rewrite_chain, create_chapter_summary_chain,
     create_critic_chain, create_graph_extraction_chain,
-    create_community_naming_chain, retrieve_with_rewriting,
+    retrieve_with_rewriting,
     create_consistency_sentinel_chain
 )
 

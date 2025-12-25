@@ -4,7 +4,7 @@
 """
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from llm_provider import get_llm
+from infra.llm.factory import get_llm
 from prompts import RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT
 from chains.base import get_writing_style_instruction
 from concurrent.futures import ThreadPoolExecutor, as_completed

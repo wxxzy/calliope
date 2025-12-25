@@ -33,4 +33,4 @@ fpdf2>=2.7.0
 EbookLib>=0.18
 markdown>=3.4.0
 EbookLib>=0.17.1
-
+SQLAlchemy>=2.0.0

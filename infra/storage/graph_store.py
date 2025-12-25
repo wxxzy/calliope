@@ -1,3 +1,7 @@
+"""
+图谱存储管理 (Graph Store)
+负责 NetworkX 图数据的持久化和加载，基于项目路径。
+"""
 import networkx as nx
 import json
 import os
@@ -6,72 +10,60 @@ from typing import List, Tuple, Dict
 
 logger = logging.getLogger(__name__)
 
-GRAPH_DIR = "data/project_graphs"
-
-def ensure_graph_dir():
-    """确保图谱存储目录存在"""
-    os.makedirs(GRAPH_DIR, exist_ok=True)
-
-def get_graph_path(collection_name: str) -> str:
+def get_graph_path(project_root: str) -> str:
     """获取指定项目的图谱文件路径"""
-    ensure_graph_dir()
-    # 简单的清理文件名逻辑
-    safe_name = "".join([c for c in collection_name if c.isalnum() or c in ('_', '-')])
-    return os.path.join(GRAPH_DIR, f"{safe_name}_graph.json")
+    return os.path.join(project_root, "knowledge", "graph.json")
 
-def load_graph(collection_name: str) -> nx.Graph:
+def load_graph(project_root: str) -> nx.Graph:
     """
     加载项目的知识图谱。如果不存在，返回一个空图。
-    使用 NetworkX 的 node_link_graph 格式。
     """
-    path = get_graph_path(collection_name)
+    path = get_graph_path(project_root)
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            # networkx 2.x+ 兼容性
             return nx.node_link_graph(data)
         except Exception as e:
-            logger.error(f"加载图谱失败 {collection_name}: {e}", exc_info=True)
+            logger.error(f"加载图谱失败 {project_root}: {e}", exc_info=True)
             return nx.Graph()
     return nx.Graph()
 
-def save_graph(collection_name: str, G: nx.Graph):
+def save_graph(project_root: str, G: nx.Graph):
     """
     保存知识图谱到 JSON 文件。
     """
-    path = get_graph_path(collection_name)
+    path = get_graph_path(project_root)
     try:
         data = nx.node_link_data(G)
+        # 确保目录存在
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         logger.info(f"图谱已保存: {path} (节点数: {G.number_of_nodes()}, 边数: {G.number_of_edges()})")
     except Exception as e:
-        logger.error(f"保存图谱失败 {collection_name}: {e}", exc_info=True)
+        logger.error(f"保存图谱失败 {project_root}: {e}", exc_info=True)
 
-def update_graph_from_triplets(collection_name: str, triplets: List[Tuple[str, str, str]]):
+def update_graph_from_triplets(project_root: str, triplets: List[Tuple[str, str, str]]):
     """
     根据提取的三元组更新图谱。
     triplets: [(source, relation, target), ...] 
     """
-    G = load_graph(collection_name)
+    G = load_graph(project_root)
     updated = False
     
     for triplet in triplets:
         if not isinstance(triplet, (list, tuple)) or len(triplet) != 3:
-            logger.warning(f"跳过格式不正确的三元组: {triplet}")
             continue
             
         source, relation, target = triplet
         if not source or not target or not relation:
             continue
             
-        # 简单的标准化：去除首尾空格
         source = source.strip()
         target = target.strip()
         relation = relation.strip()
 
-        # 添加节点（如果是新的）
         if not G.has_node(source):
             G.add_node(source, type="entity")
             updated = True
@@ -79,12 +71,7 @@ def update_graph_from_triplets(collection_name: str, triplets: List[Tuple[str, s
             G.add_node(target, type="entity")
             updated = True
         
-        # 添加边（目前我们简单处理：如果是新关系则添加，如果是旧关系则覆盖）
-        # 为了支持两个节点间多种关系，我们可以把 relation 作为边的属性存储
-        # 简单的 Graph 不支持多重边，这里我们用覆盖策略，或者将关系合并字符串
-        
         if G.has_edge(source, target):
-            # 检查现有关系
             existing_relation = G[source][target].get('relation', '')
             if relation not in existing_relation:
                 new_relation = f"{existing_relation}, {relation}" if existing_relation else relation
@@ -95,57 +82,21 @@ def update_graph_from_triplets(collection_name: str, triplets: List[Tuple[str, s
             updated = True
             
     if updated:
-        save_graph(collection_name, G)
+        save_graph(project_root, G)
     
     return updated
 
-def get_entity_context(collection_name: str, entities: List[str], depth: int = 1) -> str:
+def get_multi_hop_context(project_root: str, entities: List[str], radius: int = 2) -> str:
     """
-    检索图谱上下文：给定一组实体，查找它们的关系网。
-    返回自然语言描述的字符串。
+    获取多跳邻域上下文。
     """
-    G = load_graph(collection_name)
-    if G.number_of_nodes() == 0:
-        return ""
-
-    context_lines = []
-    visited_edges = set()
-
-    for entity in entities:
-        if not G.has_node(entity):
-            continue
-        
-        # 获取一度邻居
-        neighbors = list(G.neighbors(entity))
-        if not neighbors:
-            continue
-            
-        context_lines.append(f"关于【{entity}】的关系:")
-        
-        for neighbor in neighbors:
-            # 避免重复描述无向边 (A-B 和 B-A)
-            edge_key = tuple(sorted([entity, neighbor]))
-            if edge_key in visited_edges:
-                continue
-            
-            relation = G[entity][neighbor].get('relation', '关联')
-            context_lines.append(f"- {entity} --[{relation}]--> {neighbor}")
-            visited_edges.add(edge_key)
-    
-    return "\n".join(context_lines)
-
-def get_multi_hop_context(collection_name: str, entities: List[str], radius: int = 2) -> str:
-    """
-    获取多跳邻域上下文。不仅找一度邻居，还找二度邻居。
-    """
-    G = load_graph(collection_name)
+    G = load_graph(project_root)
     if G.number_of_nodes() == 0:
         return ""
 
     combined_subgraph = nx.Graph()
     for entity in entities:
         if G.has_node(entity):
-            # 获取半径为 radius 的邻域子图
             ego = nx.ego_graph(G, entity, radius=radius)
             combined_subgraph = nx.compose(combined_subgraph, ego)
 
@@ -155,8 +106,7 @@ def get_multi_hop_context(collection_name: str, entities: List[str], radius: int
     context_lines = []
     visited_edges = set()
     
-    # 获取派系信息
-    communities = detect_communities(collection_name)
+    communities = detect_communities(project_root)
     
     for u, v, d in combined_subgraph.edges(data=True):
         edge_key = tuple(sorted([u, v]))
@@ -164,8 +114,6 @@ def get_multi_hop_context(collection_name: str, entities: List[str], radius: int
             continue
             
         relation = d.get('relation', '关联')
-        
-        # 获取所属派系（如果有）
         u_comm = next((name for name, nodes in communities.items() if u in nodes), "中立/未知")
         v_comm = next((name for name, nodes in communities.items() if v in nodes), "中立/未知")
         
@@ -175,22 +123,18 @@ def get_multi_hop_context(collection_name: str, entities: List[str], radius: int
 
     return "\n".join(context_lines)
 
-def detect_communities(collection_name: str) -> Dict[str, List[str]]:
+def detect_communities(project_root: str) -> Dict[str, List[str]]:
     """
-    使用 Leiden 算法识别实体派系。
-    相比原来的贪婪算法，Leiden 划分更精准、稳定且内部连通性更好。
+    使用 Leiden 或 Greedy 算法识别实体派系。
     """
-    G = load_graph(collection_name)
+    G = load_graph(project_root)
     if G.number_of_nodes() < 2:
         return {}
 
     try:
-        # 尝试使用高级的 Leiden 算法 (需要 leidenalg 和 igraph)
         import igraph as ig
         import leidenalg
-
-        # 1. 转换 NetworkX 图为 igraph 对象
-        # 将节点索引化
+        
         node_list = list(G.nodes())
         node_to_idx = {node: i for i, node in enumerate(node_list)}
         
@@ -199,24 +143,15 @@ def detect_communities(collection_name: str) -> Dict[str, List[str]]:
             edges.append((node_to_idx[u], node_to_idx[v]))
         
         ig_graph = ig.Graph(n=len(node_list), edges=edges)
-        
-        # 2. 执行 Leiden 算法
-        # 使用 ModularityVertexPartition (模组度划分)
         partition = leidenalg.find_partition(ig_graph, leidenalg.ModularityVertexPartition)
         
-        # 3. 解析结果
         result = {}
         for i, community_nodes_indices in enumerate(partition):
-            # 将索引转换回原始节点名称
             comm_nodes = [node_list[idx] for idx in community_nodes_indices]
             result[f"派系_{i+1}"] = comm_nodes
-        
-        logger.info(f"Leiden 算法执行成功，发现 {len(result)} 个派系。")
         return result
 
     except ImportError:
-        logger.warning("未找到 leidenalg 或 igraph，回退到基础算法。请运行 `pip install leidenalg python-igraph` 获得更好的分组效果。")
-        # 回退逻辑 (Greedy Modularity)
         try:
             from networkx.algorithms import community
             communities_generator = community.greedy_modularity_communities(G)
@@ -226,30 +161,25 @@ def detect_communities(collection_name: str) -> Dict[str, List[str]]:
             return result
         except Exception:
             return {}
-    except Exception as e:
-        logger.error(f"Leiden 算法执行失败: {e}")
+    except Exception:
         return {}
 
-def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str, str, str]]) -> List[Dict]:
+def detect_triplet_conflicts(project_root: str, new_triplets: List[Tuple[str, str, str]]) -> List[Dict]:
     """
     检测新三元组与现有图谱之间的潜在冲突。
     """
-    G = load_graph(collection_name)
+    G = load_graph(project_root)
     conflicts = []
-    
-    # 定义一些具有方向性或排他性的关系关键词
     asymmetric_relations = ["父亲", "母亲", "上级", "主人", "位于"]
     
     for triplet in new_triplets:
         if not isinstance(triplet, (list, tuple)) or len(triplet) != 3:
             continue
-            
         s, r, t = triplet
-        # 1. 检测完全重复
+        
         if G.has_edge(s, t) and r in G[s][t].get('relation', ''):
             continue
             
-        # 2. 检测反向逻辑冲突 (例如: A是B的父亲, 新提取出B是A的父亲)
         if any(keyword in r for keyword in asymmetric_relations):
             if G.has_edge(t, s):
                 existing_r = G[t][s].get('relation', '')
@@ -261,7 +191,6 @@ def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str,
                         "reason": "检测到可能存在冲突的方向性关系"
                     })
 
-        # 3. 检测同源排他性冲突 (例如: 林恩位于A, 新提取出林恩位于B)
         if ("位于" in r or "身份是" in r) and G.has_node(s):
             for neighbor in G.neighbors(s):
                 existing_r = G[s][neighbor].get('relation', '')
@@ -272,56 +201,23 @@ def detect_triplet_conflicts(collection_name: str, new_triplets: List[Tuple[str,
                         "existing": f"{s} --[{existing_r}]--> {neighbor}",
                         "reason": f"实体 '{s}' 的该属性已有不同记录"
                     })
-                    
     return conflicts
 
-
-
-
-
-
-
-
-
-def get_graph_stats(collection_name: str) -> Dict:
-# ... (保持不变) ...
-    """获取图谱统计信息"""
-    G = load_graph(collection_name)
+def get_graph_stats(project_root: str) -> Dict:
+    G = load_graph(project_root)
     return {
         "node_count": G.number_of_nodes(),
         "edge_count": G.number_of_edges(),
         "density": nx.density(G) if G.number_of_nodes() > 0 else 0
     }
 
-def remove_node(collection_name: str, node_id: str):
-    """手动删除一个节点及其关联的所有边"""
-    G = load_graph(collection_name)
+def remove_node(project_root: str, node_id: str):
+    G = load_graph(project_root)
     if G.has_node(node_id):
         G.remove_node(node_id)
-        save_graph(collection_name, G)
+        save_graph(project_root, G)
         return True
     return False
 
-def remove_edge(collection_name: str, source: str, target: str):
-    """手动删除一条边"""
-    G = load_graph(collection_name)
-    if G.has_edge(source, target):
-        G.remove_edge(source, target)
-        save_graph(collection_name, G)
-        return True
-    return False
-
-def add_manual_edge(collection_name: str, source: str, relation: str, target: str):
-    """人工手动添加一条边（会自动创建不存在的节点）"""
-    return update_graph_from_triplets(collection_name, [(source, relation, target)])
-
-def update_edge_relation(collection_name: str, source: str, target: str, new_relation: str):
-    """
-    更新现有连线的关系描述。
-    """
-    G = load_graph(collection_name)
-    if G.has_edge(source, target):
-        G[source][target]['relation'] = new_relation
-        save_graph(collection_name, G)
-        return True
-    return False
+def add_manual_edge(project_root: str, source: str, relation: str, target: str):
+    return update_graph_from_triplets(project_root, [(source, relation, target)])

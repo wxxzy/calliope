@@ -18,6 +18,8 @@ class ProjectContext:
     research_results: str = ""
     outline: str = ""
     outline_sections: List[str] = field(default_factory=list)
+    expected_total_chapters: int = 10
+    target_words_per_chapter: int = 2000
     drafts: List[str] = field(default_factory=list)
     drafting_index: int = 0
     final_manuscript: str = ""
@@ -25,6 +27,7 @@ class ProjectContext:
     # 交互过程中的临时状态
     user_prompt: str = ""
     refinement_instruction: str = ""
+    enable_research: bool = False
     selected_tool_id: str = "ddg_default"
     section_to_write: str = ""
     current_chapter_draft: str = ""

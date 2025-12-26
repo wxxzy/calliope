@@ -67,54 +67,51 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         else:
             st.info("开始撰写后，这里将自动浮现相关背景设定。")
 
-    # 1. 写作风格选择器
-    global_writing_styles_library = full_config.get("writing_styles", {})
-    style_options = ["无 (默认)"] + list(global_writing_styles_library.keys())
-
-    if 'project_writing_style_id' not in st.session_state:
-        st.session_state.project_writing_style_id = "无 (默认)"
-        st.session_state.project_writing_style_description = ""
-
-    with st.expander("📝 项目写作风格", expanded=True):
-        selected_project_style_id = st.selectbox(
-            "为当前项目选择写作风格:",
-            options=style_options,
-            index=style_options.index(st.session_state.project_writing_style_id) if st.session_state.project_writing_style_id in style_options else 0,
-            key="project_writing_style_selector"
-        )
+    # 1. 项目规模与风格设置
+    with st.expander("🛠️ 创作参数配置", expanded=True):
+        c1, c2, c3 = st.columns([1, 1, 2])
+        st.session_state.expected_total_chapters = c1.number_input("计划总章节数", min_value=1, max_value=200, value=st.session_state.get('expected_total_chapters', 10))
+        st.session_state.target_words_per_chapter = c2.number_input("平均单章字数", min_value=500, max_value=10000, value=st.session_state.get('target_words_per_chapter', 2000), step=500)
         
-        if selected_project_style_id != st.session_state.project_writing_style_id:
+        global_writing_styles_library = full_config.get("writing_styles", {})
+        style_options = ["无 (默认)"] + list(global_writing_styles_library.keys())
+        selected_project_style_id = c3.selectbox(
+            "项目写作风格:",
+            options=style_options,
+            index=style_options.index(st.session_state.get('project_writing_style_id', "无 (默认)")) if st.session_state.get('project_writing_style_id') in style_options else 0,
+        )
+        if selected_project_style_id != st.session_state.get('project_writing_style_id'):
             st.session_state.project_writing_style_id = selected_project_style_id
             st.session_state.project_writing_style_description = global_writing_styles_library.get(selected_project_style_id, "")
             st.rerun()
 
-        if st.session_state.project_writing_style_description:
-            st.markdown(f"**风格描述:** *{st.session_state.project_writing_style_description}*", unsafe_allow_html=True)
-        else:
-            st.info("采用系统默认风格。", icon="ℹ️")
-
     # 3. 规划与研究 (Combined Step 1)
     with st.container(border=True):
-        st.subheader("第一步：灵感构思 (规划+背景研究)")
-        st.text_area("请输入您的整体写作需求：", key="user_prompt", height=100)
+        st.subheader("第一步：灵感构思 (蓝图规划)")
+        st.text_area("请输入您的核心创意或故事梗概：", key="user_prompt", height=100)
         
-        # 将搜索工具选择集成到规划阶段
-        user_tools = tool_provider.get_user_tools_config()
-        st.selectbox("选择辅助研究工具:", options=list(user_tools.keys()), key="selected_tool_id")
+        c_res1, c_res2 = st.columns([1, 2])
+        with c_res1:
+            st.checkbox("启用 AI 背景研究 (联网检索)", key="enable_research", help="勾选后，AI 将根据蓝图自动在互联网搜索相关资料。")
+        
+        with c_res2:
+            if st.session_state.enable_research:
+                user_tools = tool_provider.get_user_tools_config()
+                st.selectbox("选择搜索工具:", options=list(user_tools.keys()), key="selected_tool_id")
 
         if 'plan' not in st.session_state:
-            if st.button("生成写作计划与研究背景", type="primary", width='stretch'):
-                result = run_step_with_spinner_func("plan", "规划师正在构思并检索资料...", full_config)
+            if st.button("生成创作蓝图与背景研究", type="primary", width='stretch'):
+                result = run_step_with_spinner_func("plan", "规划师正在构思蓝图...", full_config)
                 if result:
                     st.rerun()
         else:
-            st.text_area("写作计划", key="plan", height=200)
+            st.text_area("故事蓝图", key="plan", height=300)
             
             # 显示自动研究的结果，并提供采纳为设定的选项
             if st.session_state.get("research_results"):
-                with st.expander("🔍 查看并采纳 AI 生成的研究背景", expanded=True):
+                with st.expander("🔍 采纳 AI 搜集的背景资料", expanded=True):
                     st.markdown(st.session_state.research_results)
-                    if st.button("👍 采纳为设定", help="将上方研究结果追加到“设定圣经”中"):
+                    if st.button("👍 采纳为设定 (并入设定圣经)", help="将上方研究结果追加到“设定圣经”中"):
                         current_bible = st.session_state.get("world_bible", "")
                         new_bible = current_bible + "\n\n---\n\n## AI 研究资料补充\n\n" + st.session_state.research_results
                         st.session_state.world_bible = new_bible
@@ -134,13 +131,16 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         # 大纲环节 (Outliner) - 现在是第二步
         with st.container(border=True):
             st.subheader("第二步：大纲设计")
+            
             if 'outline' not in st.session_state:
-                if st.button("生成文章大纲", type="primary", width='stretch'):
+                if st.button("生成全景结构化大纲", type="primary", width='stretch'):
                     result = run_step_with_spinner_func("outline", "大纲师正在规划结构...", full_config)
                     if result:
                         st.rerun()
             else:
                 st.text_area("文章大纲", key="outline", height=400)
+                # ... 保持后续逻辑 ...
+
                 st.text_input("大纲优化指令", key="outline_refinement_instruction")
                 
                 # 自动执行 (采纳建议后)
@@ -189,7 +189,21 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                 with p_col2: st.metric("当前总字数", f"{sum(len(d) for d in st.session_state.get('drafts', [])):,}")
 
             if st.button("准备撰写 (解析大纲)", key="prepare_drafting"):
-                st.session_state.outline_sections = [s.strip() for s in st.session_state.outline.split('\n- ') if s.strip()]
+                import re
+                # 使用正则匹配 ### 第 N 章 开头的段落
+                raw_outline = st.session_state.outline
+                # 寻找所有的章节标题及其内容
+                sections = re.split(r'\n(?=### 第\s?\d+\s?章)', raw_outline)
+                # 清理第一个可能存在的空段落（如果大纲直接以 ### 开头）
+                sections = [s.strip() for s in sections if s.strip()]
+                
+                # 进一步验证是否真的是章节内容
+                final_sections = []
+                for s in sections:
+                    if s.startswith("### 第") or "第" in s[:10]: # 宽松匹配防止格式微调
+                        final_sections.append(s)
+                
+                st.session_state.outline_sections = final_sections
                 st.session_state.drafts = []
                 st.session_state.drafting_index = 0
                 # 清理旧的校验警告

@@ -32,21 +32,19 @@ class WritingService:
         }
         plan_text = execute_func(planner_chain, planner_inputs)
 
-        # 2. 自动研究
-        tool_id = context.selected_tool_id
-        search_tool = tool_provider.get_tool(tool_id)
-        research_chain = create_research_chain(search_tool, writing_style=writing_style)
-        research_inputs = {
-            "plan": plan_text,
-            "user_prompt": context.user_prompt,
-            "research_results": None,
-            "refinement_instruction": None
-        }
-        research_text = execute_func(research_chain, research_inputs)
-
-        # 3. 不再直接索引研究结果，而是返回给 UI
-        # if research_text:
-        #     WritingService._index_research_results(context, research_text, full_config)
+        # 2. 自动研究 (根据开关可选)
+        research_text = None
+        if context.enable_research:
+            tool_id = context.selected_tool_id
+            search_tool = tool_provider.get_tool(tool_id)
+            research_chain = create_research_chain(search_tool, writing_style=writing_style)
+            research_inputs = {
+                "plan": plan_text,
+                "user_prompt": context.user_prompt,
+                "research_results": None,
+                "refinement_instruction": None
+            }
+            research_text = execute_func(research_chain, research_inputs)
 
         return WritingResult(plan=plan_text, research_results=research_text)
 

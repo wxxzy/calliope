@@ -18,6 +18,7 @@ def create_planner_chain(writing_style: str = ""):
             user_prompt=RunnablePassthrough(), 
             writing_style_instruction=lambda x: style_inst,
             refinement_instruction=lambda x: x.get("refinement_instruction", ""),
+            expected_total_chapters=lambda x: x.get("expected_total_chapters", 10),
             plan=lambda x: x.get("plan", "")
         )
         | prompt | planner_llm | StrOutputParser()
@@ -35,6 +36,8 @@ def create_outliner_chain(writing_style: str = ""):
             research_results=lambda x: x.get("research_results", ""),
             writing_style_instruction=lambda x: style_inst,
             refinement_instruction=lambda x: x.get("refinement_instruction", ""),
+            expected_total_chapters=lambda x: x.get("expected_total_chapters", 10),
+            target_words_per_chapter=lambda x: x.get("target_words_per_chapter", 2000),
             outline=lambda x: x.get("outline", "")
         )
         | prompt | outliner_llm | StrOutputParser()

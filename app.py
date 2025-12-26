@@ -184,11 +184,21 @@ def _load_project(project_path):
     
     safe_state_data = {k: v for k, v in state_data.items() if k in allowed_keys}
     
+    # 特殊修复：针对 bool 类型的字符串回退 (针对旧数据)
+    for k in ["enable_research", "is_cruising"]:
+        if k in safe_state_data and isinstance(safe_state_data[k], str):
+            safe_state_data[k] = safe_state_data[k].lower() == "true"
+    
     # 设置新状态
     st.session_state.update(safe_state_data)
     st.session_state['project_root'] = project_path
     st.session_state['project_name'] = meta.get('name', '未命名项目')
     st.session_state['collection_name'] = project_path # 兼容旧逻辑
+    
+    # --- 强力修复：重置巡航运行态 (防止重新进入后自动执行) ---
+    st.session_state.is_cruising = False
+    st.session_state.cruise_remaining_chapters = 0
+    
     st.rerun()
 
 def render_workspace(full_config):

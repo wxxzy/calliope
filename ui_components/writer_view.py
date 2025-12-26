@@ -179,7 +179,55 @@ def render_writer_view(full_config, run_step_with_spinner_func):
                         st.button("🔧 采纳建议并自动重写", key="refine_outline_with_critique", on_click=adopt_critique_callback)
 
         with st.container(border=True):
-            st.subheader("第三步：正文撰写 (Hybrid RAG 增强)")
+            st.subheader("第三步：正文撰写 (可控巡航模式)")
+            
+            # --- 巡航控制面板 (终极解耦版) ---
+            c_ctrl1, c_res_ctrl = st.columns([2, 1])
+            with c_ctrl1:
+                batch_size = st.number_input("本次巡航生成章节数", min_value=1, max_value=20, value=st.session_state.get("cruise_batch_size", 3))
+                if st.button("🚀 开启自动巡航撰写", type="primary", use_container_width=True):
+                    # 在单次脚本运行中执行批处理
+                    with st.status("🚀 自动巡航已启动...", expanded=True) as status:
+                        for i in range(batch_size):
+                            current = st.session_state.get('drafting_index', 0)
+                            total = len(st.session_state.get('outline_sections', []))
+                            
+                            if current >= total:
+                                st.info("已完成全部大纲内容。")
+                                break
+                            
+                            st.write(f"正在处理第 {current+1} 章...")
+                            
+                            # 1. 准备任务
+                            st.session_state.section_to_write = st.session_state.outline_sections[current]
+                            
+                            # 2. 执行逻辑 (直接调用，不带 rerun)
+                            # 注意：我们需要引入 run_step_with_spinner_func 里的核心逻辑
+                            # 或者确保 run_step_with_spinner_func 不触发内部 rerun
+                            
+                            # 获取资料
+                            ret = run_step_with_spinner_func("retrieve_for_draft", f"第 {current+1} 章：检索背景...", full_config)
+                            if ret:
+                                st.session_state['user_selected_docs'] = getattr(ret, "retrieved_docs", [])
+                                # 生成正文
+                                gen = run_step_with_spinner_func("generate_draft", f"第 {current+1} 章：正在生成正文...", full_config)
+                                if gen:
+                                    content = getattr(gen, "new_draft_content", None)
+                                    if content:
+                                        if not st.session_state.get("drafts"): st.session_state.drafts = []
+                                        st.session_state.drafts.append(content)
+                                        st.session_state.drafting_index = len(st.session_state.drafts)
+                                        # 立即存库（非常重要）
+                                        from infra.storage import sql_db
+                                        sql_db.save_project_state_to_sql(st.session_state.project_root, dict(st.session_state))
+                                        st.write(f"✅ 第 {current+1} 章已入库。")
+                        
+                        status.update(label="✅ 巡航任务全部完成！", state="complete", expanded=False)
+                    
+                    st.balloons()
+                    st.rerun() # 唯一的一次刷新
+            
+            # 进度显示
             if 'outline_sections' in st.session_state:
                 total_chaps = len(st.session_state.outline_sections)
                 done_chaps = st.session_state.get('drafting_index', 0)

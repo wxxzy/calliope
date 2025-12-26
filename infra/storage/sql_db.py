@@ -164,23 +164,22 @@ def save_project_state_to_sql(project_root: str, state_dict: dict):
                     else:
                         session.add(Chapter(index=idx+1, content=content, word_count=len(content)))
             
-            # 其他字段存入设置表
-            elif isinstance(v, (str, int, float, bool)):
-                setting = session.query(ProjectSetting).filter_by(key=k).first()
-                val_str = str(v) if not isinstance(v, str) else v
-                if setting:
-                    setting.value = val_str
-                else:
-                    session.add(ProjectSetting(key=k, value=val_str))
-            
-            # 复杂对象（List/Dict）序列化为 JSON 存储
-            elif isinstance(v, (list, dict)):
+            # 复杂对象（List/Dict）或基础类型（bool, int, float）序列化为 JSON 存储
+            elif isinstance(v, (list, dict, bool, int, float)):
                 val_str = json.dumps(v, ensure_ascii=False)
                 setting = session.query(ProjectSetting).filter_by(key=k).first()
                 if setting:
                     setting.value = val_str
                 else:
                     session.add(ProjectSetting(key=k, value=val_str))
+            
+            # 字符串直接存储
+            elif isinstance(v, str):
+                setting = session.query(ProjectSetting).filter_by(key=k).first()
+                if setting:
+                    setting.value = v
+                else:
+                    session.add(ProjectSetting(key=k, value=v))
         
         session.commit()
         return True

@@ -57,6 +57,13 @@ def get_re_ranker(re_ranker_id: str):
     constructor_params = {}
     template_params = provider_template.get("params", {})
 
+    # 自动检测运行设备 (解决 meta tensor 报错的关键)
+    try:
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        device = "cpu"
+
     for param_name, param_type in template_params.items():
         user_value = user_re_ranker_config.get(param_name)
         if user_value is not None:
@@ -70,10 +77,11 @@ def get_re_ranker(re_ranker_id: str):
                 # 特殊处理 CrossEncoder 的 model_name 参数
                 if template_id == "sentence_transformers_reranker" and param_name == "model_name":
                     constructor_params["model_name_or_path"] = user_value
+                    constructor_params["device"] = device # 显式注入设备
                 else:
                     constructor_params[param_name] = user_value
                 
-    logger.info(f"正在实例化重排器: {re_ranker_id} (类: {ReRankerClass.__name__})")
+    logger.info(f"正在实例化重排器: {re_ranker_id} (类: {ReRankerClass.__name__}, 设备: {device})")
     
     try:
         return ReRankerClass(**constructor_params)

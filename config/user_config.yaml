@@ -5,17 +5,17 @@ models:
     api_key_env: OPENAI_API_KEY
 steps:
   planner: doubao_seed
-  critic: DeepSeek-V3.2
-  graph_generator: DeepSeek-V3.2
-  researcher: DeepSeek-V3.2
+  critic: doubao_seed
+  graph_generator: doubao_seed
+  researcher: doubao_seed
   summarizer: doubao_seed
   outliner: doubao_seed
-  drafter: DeepSeek-V3.2
+  drafter: doubao_seed
   reviser: doubao_seed
   query_rewriter: doubao_seed
   chapter_summarizer: doubao_seed
   consistency_sentinel: doubao_seed
-  chat_assistant: DeepSeek-V3.2
+  chat_assistant: doubao_seed
 embeddings:
   my_custom_embedding:
     template: openai

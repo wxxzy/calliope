@@ -66,13 +66,20 @@ class WritingService:
     def generate_draft(context: ProjectContext, writing_style: str, full_config: dict, execute_func) -> WritingResult:
         """生成章节内容并自动摘要审计"""
         chain = create_draft_generation_chain(writing_style=writing_style)
+        
+        # 优化：在巡航或连续写作时，自动获取上一章内容作为“前情提要”
+        prev_chapter_content = context.current_chapter_draft # 如果是重写，优先使用当前存的旧稿
+        if not prev_chapter_content and context.drafts:
+            # 取上一章的最后 1000 字作为参考，防止 Token 爆炸
+            prev_chapter_content = f"【上一章结尾参考】:\n... {context.drafts[-1][-1000:]}"
+
         inputs = {
             "user_prompt": context.user_prompt,
             "research_results": context.research_results,
             "outline": context.outline,
             "section_to_write": context.section_to_write,
             "user_selected_docs": context.user_selected_docs,
-            "previous_chapter_draft": context.current_chapter_draft,
+            "previous_chapter_draft": prev_chapter_content,
             "refinement_instruction": context.refinement_instruction
         }
         new_content = execute_func(chain, inputs)

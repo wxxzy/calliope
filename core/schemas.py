@@ -24,6 +24,12 @@ class ProjectContext:
     drafting_index: int = 0
     final_manuscript: str = ""
     
+    # 巡航控制状态
+    is_cruising: bool = False
+    cruise_remaining_chapters: int = 0
+    cruise_batch_size: int = 3
+    cruise_logs: List[str] = field(default_factory=list)
+    
     # 交互过程中的临时状态
     user_prompt: str = ""
     refinement_instruction: str = ""

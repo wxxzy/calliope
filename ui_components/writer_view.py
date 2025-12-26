@@ -110,10 +110,17 @@ def render_writer_view(full_config, run_step_with_spinner_func):
         else:
             st.text_area("写作计划", key="plan", height=200)
             
-            # 显示自动研究的结果 (作为参考)
+            # 显示自动研究的结果，并提供采纳为设定的选项
             if st.session_state.get("research_results"):
-                with st.expander("🔍 查看同步生成的研究背景", expanded=False):
-                    st.write(st.session_state.research_results)
+                with st.expander("🔍 查看并采纳 AI 生成的研究背景", expanded=True):
+                    st.markdown(st.session_state.research_results)
+                    if st.button("👍 采纳为设定", help="将上方研究结果追加到“设定圣经”中"):
+                        current_bible = st.session_state.get("world_bible", "")
+                        new_bible = current_bible + "\n\n---\n\n## AI 研究资料补充\n\n" + st.session_state.research_results
+                        st.session_state.world_bible = new_bible
+                        st.session_state.research_results = "" # 清理，防止重复添加
+                        st.toast("已采纳！请在“设定圣经”中查看并同步。")
+                        st.rerun()
 
             st.text_input("计划优化指令", key="plan_refinement_instruction")
             if st.button("迭代优化计划与资料", type="secondary"):

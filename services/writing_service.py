@@ -44,9 +44,9 @@ class WritingService:
         }
         research_text = execute_func(research_chain, research_inputs)
 
-        # 3. 知识沉淀
-        if research_text:
-            WritingService._index_research_results(context, research_text, full_config)
+        # 3. 不再直接索引研究结果，而是返回给 UI
+        # if research_text:
+        #     WritingService._index_research_results(context, research_text, full_config)
 
         return WritingResult(plan=plan_text, research_results=research_text)
 
@@ -185,11 +185,7 @@ class WritingService:
 
         return WritingResult(retrieved_docs=all_context_docs)
 
-    @staticmethod
-    def _index_research_results(context: ProjectContext, text: str, full_config: dict):
-        project_root = context.project_root
-        text_splitter = text_splitter_provider.get_text_splitter(full_config.get('active_text_splitter', 'default_recursive'))
-        vector_store_manager.index_text(project_root, text, text_splitter, metadata={"source": "automated_research"})
+
 
     @staticmethod
     def _index_chapter_summary(context: ProjectContext, content: str, full_config: dict):

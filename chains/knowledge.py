@@ -5,11 +5,7 @@
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from infra.llm.factory import get_llm
-from prompts import (
-    QUERY_REWRITER_PROMPT, CHAPTER_SUMMARIZER_PROMPT, 
-    CRITIC_PROMPT, GRAPH_EXTRACTION_PROMPT,
-    CONSISTENCY_CHECK_PROMPT
-)
+from prompts import get_prompt_template
 from infra.storage.vector_store import retrieve_context
 from chains.base import get_writing_style_instruction
 import logging
@@ -17,16 +13,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 def create_query_rewrite_chain():
-    """创建查询重写链：将口语化描述转换为适合检索的关键词"""
-    return QUERY_REWRITER_PROMPT | get_llm("query_rewriter") | StrOutputParser()
+    """创建查询重写链"""
+    prompt = get_prompt_template("query_rewriter")
+    return prompt | get_llm("query_rewriter") | StrOutputParser()
 
 def create_chapter_summary_chain():
-    """创建章节摘要链：用于为存入记忆库提供精简的情节概括及结构化元数据"""
-    return CHAPTER_SUMMARIZER_PROMPT | get_llm("chapter_summarizer") | JsonOutputParser()
+    """创建章节摘要链"""
+    prompt = get_prompt_template("chapter_summarizer")
+    return prompt | get_llm("chapter_summarizer") | JsonOutputParser()
 
 def create_critic_chain(writing_style: str = ""):
-    """创建评论员链：提供专业的文学逻辑和文风评估反馈"""
+    """创建评论员链"""
     style_inst = get_writing_style_instruction(writing_style)
+    prompt = get_prompt_template("critic")
     return (
         RunnablePassthrough.assign(
             stage=lambda x: x.get("stage", "未知"),
@@ -34,18 +33,18 @@ def create_critic_chain(writing_style: str = ""):
             content_to_review=lambda x: x.get("content_to_review", ""),
             writing_style_instruction=lambda x: style_inst
         )
-        | CRITIC_PROMPT | get_llm("critic", temperature=0.3) | StrOutputParser()
+        | prompt | get_llm("critic", temperature=0.3) | StrOutputParser()
     )
 
 def create_graph_extraction_chain():
-    """创建知识图谱提取链：从文本中抽取结构化的实体关系三元组"""
-    return GRAPH_EXTRACTION_PROMPT | get_llm("graph_generator", temperature=0.1) | JsonOutputParser()
-
-
+    """创建知识图谱提取链"""
+    prompt = get_prompt_template("graph_extraction")
+    return prompt | get_llm("graph_generator", temperature=0.1) | JsonOutputParser()
 
 def create_consistency_sentinel_chain():
-    """创建逻辑一致性校验链：识别正文与图谱设定之间的冲突"""
-    return CONSISTENCY_CHECK_PROMPT | get_llm("consistency_sentinel", temperature=0.1) | StrOutputParser()
+    """创建逻辑一致性校验链"""
+    prompt = get_prompt_template("consistency_check")
+    return prompt | get_llm("consistency_sentinel", temperature=0.1) | StrOutputParser()
 
 def retrieve_with_rewriting(collection_name, query_text, recall_k, rerank_k, re_ranker, filter_dict=None):
     """

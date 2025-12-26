@@ -5,7 +5,7 @@
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from infra.llm.factory import get_llm
-from prompts import RESEARCH_QUERY_PROMPT, SUMMARIZER_PROMPT
+from prompts import get_prompt_template
 from chains.base import get_writing_style_instruction
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
@@ -26,14 +26,14 @@ def create_research_chain(search_tool, writing_style: str = ""):
     """
     style_inst = get_writing_style_instruction(writing_style)
 
-    # 1. 查询词生成子链
+    research_query_prompt = get_prompt_template("research_query")
     generate_queries_chain = (
         RunnablePassthrough.assign(
             plan=RunnablePassthrough(), 
             user_prompt=RunnablePassthrough(),
             writing_style_instruction=lambda x: style_inst
         )
-        | RESEARCH_QUERY_PROMPT | get_llm("researcher") | StrOutputParser()
+        | research_query_prompt | get_llm("researcher") | StrOutputParser()
         | (lambda text: [line for line in text.strip().split("\n") if line.strip()])
     )
     
@@ -60,6 +60,7 @@ def create_research_chain(search_tool, writing_style: str = ""):
         return "\n\n---\n\n".join(all_results_text)
 
     # 2. 结果总结子链
+    summarizer_prompt = get_prompt_template("summarizer")
     summarize_chain = (
         RunnablePassthrough.assign(
             user_prompt=RunnablePassthrough(),
@@ -68,7 +69,7 @@ def create_research_chain(search_tool, writing_style: str = ""):
             refinement_instruction=lambda x: x.get("refinement_instruction", ""),
             research_results=lambda x: x.get("research_results", "")
         )
-        | SUMMARIZER_PROMPT | get_llm("summarizer") | StrOutputParser()
+        | summarizer_prompt | get_llm("summarizer") | StrOutputParser()
     )
 
     return (

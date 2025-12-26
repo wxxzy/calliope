@@ -208,6 +208,7 @@ class WritingService:
             "time": metadata.get("time", "未知"),
             "location": metadata.get("location", "未知"),
             "tension": metadata.get("tension", 5.0),
+            "word_count": len(content),
             "summary": summary_text
         }
         sql_db.save_timeline_event(context.project_root, event_data)

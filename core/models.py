@@ -42,4 +42,5 @@ class TimelineEvent(Base):
     time_str = Column(String, nullable=True) # 故事内时间，如 "1990年"
     location = Column(String, nullable=True)
     tension = Column(Float, default=0.0) # 戏剧张力 (1-10)
+    word_count = Column(Integer, default=0) # 字数
     event_desc = Column(String, nullable=True) # 简短事件描述

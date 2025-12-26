@@ -104,6 +104,7 @@ def save_timeline_event(project_root: str, event_data: dict):
             existing.time_str = event_data.get("time")
             existing.location = event_data.get("location")
             existing.tension = event_data.get("tension", 5.0)
+            existing.word_count = event_data.get("word_count", 0)
             existing.event_desc = event_data.get("summary")
         else:
             new_event = TimelineEvent(
@@ -111,6 +112,7 @@ def save_timeline_event(project_root: str, event_data: dict):
                 time_str=event_data.get("time"),
                 location=event_data.get("location"),
                 tension=event_data.get("tension", 5.0),
+                word_count=event_data.get("word_count", 0),
                 event_desc=event_data.get("summary")
             )
             session.add(new_event)
@@ -132,6 +134,7 @@ def get_timeline(project_root: str):
                 "time": e.time_str,
                 "location": e.location,
                 "tension": e.tension,
+                "word_count": e.word_count,
                 "summary": e.event_desc
             } for e in events
         ]
